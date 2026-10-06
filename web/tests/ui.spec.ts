@@ -1571,13 +1571,14 @@ test('reference open hands form vertical columns and score stays in sectors', as
   await page.getByRole('button', {name:'Закрыть', exact:true}).click();
   for (const [width,height] of [[1440,900],[1000,600],[844,390],[390,844]]) {
     await page.setViewportSize({width,height});
+    await expect.poll(()=>page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual({width,height});
     const columns = await page.locator('.exposed').evaluateAll(es=>es.map(e=>Array.from(e.children).map(g=>{
       const r=g.getBoundingClientRect(); return {x:r.x,y:r.y,bottom:r.bottom};
     })));
     for (const groups of columns) {
       expect(groups.length).toBe(4);
       expect(groups.every((g,i)=>!i || g.y>groups[i-1].y)).toBeTruthy();
-      expect(groups.every(g=>g.bottom<=height)).toBeTruthy();
+      expect(groups.every(g=>g.bottom<=height),JSON.stringify({width,height,groups})).toBeTruthy();
     }
     await page.screenshot({path:`../.build/reference-open-${width}.png`});
   }
