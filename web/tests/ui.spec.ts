@@ -526,7 +526,22 @@ test('debug preference gates bot tools and inspection toggles a shared pause',as
   await expect(page.locator('.player-left .exposed')).toHaveCount(0);
 });
 
+test('AI key saving reports unavailable native vault without storing a secret', async ({page}) => {
+  test.skip(process.platform === 'win32', 'Windows provides a native credential vault.');
+  await page.goto(url);
+  await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+  await page.getByRole('tab', {name: 'ИИ боты', exact: true}).click();
+  await page.locator('[data-ai="add"]').click();
+  await page.locator('.ai-keys summary').click();
+  await page.locator('[data-ai-key-name]').fill('Test key');
+  await page.locator('#ai-key-value').fill('fake-key-for-test');
+  await page.locator('[data-ai="key-save"]').click();
+  await expect(page.locator('#notice')).toContainText('Защищённое хранилище ключей на этом устройстве недоступно');
+  await expect(page.locator('[data-ai-field="keyID"] option')).toHaveCount(1);
+});
+
 test('AI models and encrypted keys persist and can be assigned to individual bots',async({page})=>{
+  test.skip(process.platform !== 'win32', 'Native credential storage uses Windows DPAPI; Android supplies its own Keystore.');
   await page.setViewportSize({width:1100,height:800});
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
@@ -1014,6 +1029,7 @@ test('button contact and click have separate feedback without duplicate actions'
   await cdp.detach();
 });
 test('Windows log path can be saved in connection settings', async ({page}) => {
+  test.skip(process.platform !== 'win32', 'The configurable desktop log path is a Windows feature.');
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('tab',{name:'Подключение',exact:true}).click();
@@ -1891,7 +1907,7 @@ test("fill empty seats and manage saves from compact selector", async ({ page })
   await expect(page.getByRole('heading', {name:'Ваш стол'})).toBeVisible();
 });
 test("create, trade, play, score and responsive layout", async ({ page }) => {
-  test.setTimeout(90000);
+  test.setTimeout(150000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(url);
@@ -1923,9 +1939,17 @@ test("create, trade, play, score and responsive layout", async ({ page }) => {
   await page.locator('[data-action="bid"]').click();
   await page.getByRole('button',{name:'8 без козыря',exact:true}).click();
   await expect(page.locator('.discard-tray')).toBeVisible();
-  // Drive legal UI choices until a complete hand has been played.
-  for (let i = 0; i < 160; i++) {
-    if (await page.locator('.round-summary').count()) break;
+  // Search-based bots can take longer on shared CI runners. Observe the
+  // persistent ledger, rather than racing the automatically dismissed summary.
+  const endpoint = new URL('/api', url).href;
+  const headers = {'X-Preferans-Token': new URL(url).hash.slice(1)};
+  const roundHistory = async () => {
+    const response = await page.request.post(endpoint, {headers, data: {action: 'status'}});
+    return (await response.json()).data.view.history ?? [];
+  };
+  const deadline = Date.now() + 110000;
+  while (Date.now() < deadline) {
+    if ((await roundHistory()).length) break;
     if (await page.locator('.discard-tray').count()) {
       await dragCard(page,page.locator(".hand [data-card]").first(),page.locator('.discard-tray'));
       await dragCard(page,page.locator(".hand [data-card]").first(),page.locator('.discard-tray'));
@@ -1945,8 +1969,8 @@ test("create, trade, play, score and responsive layout", async ({ page }) => {
     }
     await page.waitForTimeout(250);
   }
-  await expect(page.locator('.round-summary')).toBeVisible();
-  // The round summary occupies the center; the toolbar keeps the score accessible.
+  await expect.poll(async () => (await roundHistory()).length).toBeGreaterThan(0);
+  // Recorded results remain accessible after the temporary summary disappears.
   await page.locator('.table-heading [data-panel="score"]').click();
   await expect(page.locator("#panel")).toContainText("История раздач");
   await page.getByRole("button", { name: "Закрыть", exact: true }).click();
