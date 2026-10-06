@@ -30,6 +30,7 @@ test('rooms: local language selection persists across screens without changing t
   await expect(picker).toHaveValue('en');
   await page.locator('#create-form [name="name"]').fill('Гена');
   await page.locator('#create-form [name="players"]').selectOption('4');
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.getByRole('button',{name:'Create table →',exact:true}).click();
   await expect(page.locator('.playing-field')).toContainText('Bot 2');
   await page.getByRole('button',{name:'Ready',exact:true}).click();
@@ -58,8 +59,11 @@ test('rooms: local language selection persists across screens without changing t
   await expect(page.locator('html')).toHaveAttribute('lang','en');
   await page.locator('#finish-party-topbar').click();
   await expect(page.locator('#create-form')).toBeVisible();
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('#create-form [name="players"]').selectOption('3');
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.getByRole('button',{name:'Create table →',exact:true}).click();
+  await expect(page.locator('.center.lobby')).toBeVisible();
   await page.getByRole('button',{name:'Ready',exact:true}).click();
   await page.getByRole('button',{name:'Start game',exact:true}).click();
   await expect(page.locator('.hand .card')).toHaveCount(10);
@@ -527,7 +531,12 @@ test('debug preference gates bot tools and inspection toggles a shared pause',as
 });
 
 test('AI key saving reports unavailable native vault without storing a secret', async ({page}) => {
-  test.skip(process.platform === 'win32', 'Windows provides a native credential vault.');
+  // Exercise the real unsupported vault on Linux; simulate a native vault
+  // failure on Windows so the same error presentation is checked locally.
+  if (process.platform === 'win32') await page.route('**/api', async route => {
+    if (route.request().postDataJSON().action !== 'ai-key-save') return route.fallback();
+    await route.fulfill({json: {error: 'Защищённое хранилище ключей на этом устройстве недоступно.'}});
+  });
   await page.goto(url);
   await page.getByRole('button', {name: 'Настройки', exact: true}).click();
   await page.getByRole('tab', {name: 'ИИ боты', exact: true}).click();
@@ -536,7 +545,7 @@ test('AI key saving reports unavailable native vault without storing a secret', 
   await page.locator('[data-ai-key-name]').fill('Test key');
   await page.locator('#ai-key-value').fill('fake-key-for-test');
   await page.locator('[data-ai="key-save"]').click();
-  await expect(page.locator('#notice')).toContainText('Защищённое хранилище ключей на этом устройстве недоступно');
+  await expect(page.locator('[data-ai-status]')).toContainText('Защищённое хранилище ключей на этом устройстве недоступно');
   await expect(page.locator('[data-ai-field="keyID"] option')).toHaveCount(1);
 });
 
