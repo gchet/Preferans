@@ -1,0 +1,7 @@
+#panel[data-kind="ai-review"] { width: min(980px, calc(100vw - 24px)); }
+.ai-exchange pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40dvh; overflow-y: auto; user-select: text; font-size: 12px; padding: 10px; background: #0002; }
+.ai-exchange details { margin: 8px 0; }
+.ai-review-decision { font-size: 19px; }
+.ai-review-chat p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ai-review-chat [data-review-chat] { max-height: 35dvh; overflow-y: auto; }
+.ai-review-actions { position: sticky; bottom: 0; padding: 10px 0; background: var(--surface, #172333); }

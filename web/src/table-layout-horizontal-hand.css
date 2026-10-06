@@ -1,0 +1,272 @@
+/* 3-auction2.svg: player info | cards | hint and actions.
+   The preceding table-layout.css is the preserved previous layout. */
+@media (min-width: 701px) {
+  body.at-table {
+    --table-card-h: clamp(44px, min(10.4vw, calc((100dvh - 192px - 6 * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max))) / 5.12)), 220px);
+    --own-card-h: calc(var(--table-card-h) * var(--own-card-scale));
+    --side-width: 32%;
+    --info-width: 30%;
+  }
+  body.at-table:not([data-stage="lobby"]) .hand-area {
+    display: grid;
+    grid-template-columns: minmax(0, 14fr) minmax(0, 62fr) minmax(0, 24fr);
+    grid-template-rows: 1fr 1fr;
+    align-items: center;
+    column-gap: 10px;
+    padding: 2px 8px;
+    min-height: calc(var(--own-card-h) + 4px);
+  }
+  body.at-table:not([data-stage="lobby"]) .hand-label { display: contents; }
+  body.at-table:not([data-stage="lobby"]) .hand-label > strong {
+    grid-column: 1; grid-row: 1 / 3;
+    padding-left: 12px;
+    min-width: 0; overflow-wrap: anywhere;
+    font-size: clamp(13px, 1.4vw, 22px);
+  }
+  body.at-table:not([data-stage="lobby"]) .hand-label > strong > small {
+    display: block; margin: 6px 0 0;
+    font-size: clamp(11px, 1.1vw, 17px);
+  }
+  body.at-table:not([data-stage="lobby"]) .hand-label > span {
+    grid-column: 3; grid-row: 1;
+    text-align: center; align-self: end;
+    font-size: clamp(11px, 1.2vw, 18px);
+    padding: 4px; overflow-wrap: anywhere;
+  }
+  body.at-table:not([data-stage="lobby"]) .hand {
+    grid-column: 2; grid-row: 1 / 3;
+    width: 100%; min-width: 0; padding: 0;
+    min-height: var(--own-card-h);
+  }
+  body.at-table .hand .card { margin-left: calc(var(--table-card-w) * -.60); }
+  body.at-table .hand .suit-group .card:first-child { margin-left: 0; }
+  body.at-table:not([data-stage="lobby"]) .hand-area > .dealer-hand {
+    grid-column: 2; grid-row: 1 / 3; justify-content: center;
+  }
+  body.at-table:not([data-stage="lobby"]) .action-area {
+    grid-column: 3; grid-row: 2; align-self: start;
+    height: auto; min-height: 0; max-height: none;
+    padding: 6px 0 0; gap: 6px;
+  }
+  body.at-table:not([data-stage="lobby"]) .action-area button {
+    font-size: clamp(11px, 1.2vw, 18px); padding: 6px 10px;
+  }
+  body.at-table .action-area .drag-hint { font-size: clamp(11px, 1vw, 15px); text-align: center; }
+  body.at-table[data-stage="discard"] .hand-label > span { display: none; }
+  body.at-table[data-stage="play"] .hand-label > span { display: none; }
+  body.at-table[data-stage="play"] .action-area { grid-row: 1 / 3; align-self: center; }
+  body.at-table[data-stage="discard"] .action-area {
+    grid-row: 1 / 3; align-self: center; padding-top: 0;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  body.at-table[data-stage="discard"] .action-area .drag-hint,
+  body.at-table[data-stage="discard"] .action-area [data-action="show-talon"] { grid-column: 1 / -1; }
+  @media (max-height: 650px) {
+    body.at-table[data-stage="discard"] .action-area .drag-hint { display: none; }
+  }
+  body.at-table[data-card-size] .hand .card {
+    width: calc(var(--own-card-h) * .7) !important;
+    min-width: calc(var(--own-card-h) * .7) !important;
+    flex-basis: calc(var(--own-card-h) * .7) !important;
+    height: var(--own-card-h) !important; min-height: var(--own-card-h) !important;
+  }
+  body.at-table[data-card-size] .hand .card .corner,
+  body.at-table[data-card-size] .hand .card .corner small { font-size: calc(var(--table-index) * var(--own-card-scale)); }
+  body.at-table .playing-field .center { width: 36%; padding-bottom: 20px; }
+  body.at-table .player:not(.player-top) .player-cards:not(:has(.exposed)) {
+    min-height: calc(4 * var(--table-card-h) + 30px + 6 * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max)));
+    justify-content: center;
+  }
+  body.at-table .playing-field:has(.player-top) .center { padding-top: max(0px, calc(var(--table-card-h) - 40px)); }
+  body.at-table .playing-field:has(.player-top) .trick-label { top: calc(var(--table-card-h) - 42px); }
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+    left: 25%; top: -62px; width: 50%;
+    display: grid; grid-template-columns: 70px minmax(0, 1fr);
+    align-items: start; gap: 6px;
+  }
+  body.at-table .player-top .player-info { grid-column: 1; grid-row: 1; flex-direction: column; gap: 4px; }
+  body.at-table .playing-field .player-top .speech {
+    font-size: 12px; padding: 5px 3px; letter-spacing: -.3px;
+    white-space: normal; overflow-wrap: anywhere; text-align: center;
+  }
+  body.at-table .player-top .player-cards { grid-column: 2; grid-row: 1; transform: none; }
+  body.at-table .playing-field .player-top .player-cards .exposed { width: 100%; max-width: 100%; }
+  body.at-table .hand .card:not(:first-child),
+  body.at-table .exposed .card:not(:first-child),
+  body.at-table .player-top .exposed .card:not(:first-child),
+  body.at-table .playing-field .player-top .closed-hand .card-back:not(:first-child) { margin-left: var(--card-overlap, 0px); }
+}
+
+
+/* v8: four-player upper seat. This file is loaded after table-layout.css,
+   so the final upper-seat geometry must be defined here.  Widen the seat only
+   to the right, give the hand the extra width, and keep the statistics in the
+   same active-turn article. fitCardFans() then recalculates a smaller overlap
+   from the wider .exposed/.closed-hand client width. */
+@media (min-width: 701px) {
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+    left: 25%;
+    right: auto;
+    width: 60%;
+    grid-template-columns: 70px minmax(0, 1fr) calc(clamp(24px, 3vw, 36px) + clamp(8px, 1vw, 16px));
+    column-gap: clamp(8px, 1vw, 16px);
+  }
+
+  body.at-table .player-top .player-info {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  body.at-table .player-top .player-cards {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    min-width: 0;
+    align-self: stretch;
+  }
+
+  body.at-table .playing-field .player-top .player-cards .exposed,
+  body.at-table .playing-field .player-top .player-cards .closed-hand {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body.at-table .player-top .top-card-stats {
+    grid-column: 3;
+    grid-row: 1;
+    position: static;
+    display: flex !important;
+    align-self: stretch;
+    height: auto;
+    justify-content: center;
+    justify-self: center;
+    transform: none;
+    padding: 0;
+    margin-left: clamp(8px, 1vw, 16px);
+  }
+  body.at-table .player-top .top-card-stats > span[data-taken] {
+    width: clamp(24px, 3vw, 36px);
+    height: clamp(24px, 3vw, 36px);
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+}
+
+/* Tablet landscape: overlap successive suit rows while keeping their upper
+   indices exposed. Reserve the same ten-card envelope throughout the deal. */
+@media (min-width: 701px) {
+  body.at-table:has(.player-top):not([data-stage="lobby"]) {
+    --side-open-offset: clamp(72px, 11vh, 120px);
+    --table-card-h: var(--fitted-card-h, clamp(44px, min(10.4vw, calc((100dvh - 192px - 6 * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max))) / 3.86)), 220px));
+  }
+  body.at-table .playing-field:has(.player-top) .player:not(.player-top) .exposed .suit-group + .suit-group {
+    margin-top: calc(10px - var(--table-card-h) * var(--suit-row-overlap, .42));
+  }
+  /* Move the complete seat so labels and the turn frame follow the cards. */
+  body.at-table .playing-field:has(.player-top) .player:not(.player-top) {
+    transform: translateY(var(--side-open-offset, 0px));
+  }
+  body.at-table .playing-field:has(.player-top) .player:not(.player-top) .player-cards:not(:has(.exposed)) {
+    min-height: calc(var(--side-envelope, 2.74) * var(--table-card-h) + 30px + 6 * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max)));
+  }
+}
+
+@media (min-width: 701px) and (min-height: 500px) {
+  body.at-table:not([data-stage="lobby"]) {
+    --table-card-h: var(--fitted-card-h, 80px);
+    --suit-row-overlap: .34;
+    --side-envelope: 2.98;
+  }
+  body.at-table:has(.player-top):not([data-stage="lobby"]) {
+    --suit-row-overlap: .50;
+    --side-envelope: 2.5;
+  }
+  body.at-table .playing-field .player:not(.player-top) .exposed .suit-group + .suit-group {
+    margin-top: calc(10px - var(--table-card-h) * var(--suit-row-overlap));
+  }
+  body.at-table .playing-field .player:not(.player-top) .player-cards:not(:has(.exposed)) {
+    min-height: calc(var(--side-envelope) * var(--table-card-h) + 30px + 6 * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max)));
+  }
+}
+
+/* All trick counters use the upper seat's diameter, including short tablets. */
+@media (max-height: 499px) {
+  body.at-table:has(.player-top):not([data-stage="lobby"]) { --side-open-offset: 0px; }
+}
+body.at-table .playing-field .seat-marks > span[data-taken],
+body.at-table .own-taken,
+body.at-table .player-top .top-card-stats > span[data-taken] {
+  box-sizing: border-box;
+  width: clamp(24px, 3vw, 36px) !important;
+  height: clamp(24px, 3vw, 36px) !important;
+  min-width: clamp(24px, 3vw, 36px);
+  padding: 0 !important;
+  border-radius: 50% !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(14px, 1.8vw, 18px) !important;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Landscape phones must keep seat labels beside their cards even below the
+   portrait-width breakpoint. Overlap suit rows to fit the shorter viewport. */
+@media (orientation: landscape) and (min-width: 600px) and (max-height: 499px) {
+  body.at-table { --side-width: 30%; --info-width: 34%; }
+  body.at-table .playing-field .player:not(.player-top) {
+    display: grid;
+    grid-template-columns: var(--info-width) minmax(0, 1fr);
+    align-items: start;
+    top: 2px;
+    transform: none;
+    gap: 4px;
+  }
+  body.at-table .playing-field .player-right:not(.player-top) {
+    grid-template-columns: minmax(0, 1fr) var(--info-width);
+  }
+  body.at-table .playing-field:has(.player-top) .player:not(.player-top) {
+    top: calc(var(--table-card-h) + 12px);
+  }
+  body.at-table .playing-field .player:not(.player-top) .player-info {
+    padding: 2px 0;
+    gap: 2px;
+  }
+  body.at-table .playing-field .player:not(.player-top) .player-info > div {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  body.at-table .playing-field .player:not(.player-top) .player-cards { padding-top: 2px; }
+  body.at-table .playing-field .player:not(.player-top) .exposed .suit-group + .suit-group {
+    margin-top: calc(4px - var(--table-card-h) * .65);
+  }
+  body.at-table .playing-field .player:not(.player-top) .exposed .suit-group {
+    padding-bottom: calc((var(--suit-count) - 1) * 3px);
+  }
+  body.at-table .playing-field .player:not(.player-top) .exposed .card { top: calc(var(--fan-index, 0) * 3px); }
+  body.at-table .playing-field .player:not(.player-top) .player-cards:not(:has(.exposed)) {
+    min-height: 0;
+  }
+}
+
+/* v10: align the four-player upper seat with the Pool/Time control.
+   .playing-field starts below .table-heading; -62px lifts the upper seat back
+   into the heading row so its top edge matches the Pool/Time button seen at
+   the left. Side seats are intentionally unchanged. */
+@media (min-width: 701px) {
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+    top: var(--upper-seat-top, -50px);
+  }
+}
+
+/* v11: align the upper player's top edge with the top of the Pula/Time row.
+   .playing-field starts after .table-heading plus the #app row gap.  On the
+   desktop layout the heading is 44px high and the gap is 6px, hence -50px. */
+@media (min-width: 701px) and (min-height: 651px) {
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+    top: var(--upper-seat-top, -50px);
+  }
+}

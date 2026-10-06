@@ -1,0 +1,10 @@
+:root {font-family: "Segoe UI",Arial,sans-serif;color:#eaf2ed;background:#10241b;color-scheme:dark}
+* {box-sizing:border-box} body{margin:0} main{max-width:1000px;margin:auto;padding:20px}
+h1{font-size:30px} h2{font-size:22px} p,li{line-height:1.5} section{background:#1d352a;border:1px solid #567261;border-radius:12px;padding:18px;margin:16px 0}
+label{display:block;margin:12px 0} input,textarea{display:block;width:100%;padding:10px;margin-top:6px;font:inherit;border:1px solid #71897b;border-radius:6px;background:#12251c;color:#fff} textarea{overflow-wrap:anywhere;resize:vertical}
+button{font:inherit;background:#b9d9c7;color:#12251c;border:0;border-radius:7px;padding:12px;margin:5px 6px 5px 0;cursor:pointer} button:disabled{opacity:.45;cursor:default}
+#verdict{font-size:23px;font-weight:bold;color:#ffda91} #verdict.good{color:#a0f1b1} #notice{color:#ffe2a5;white-space:pre-wrap}
+#protocol-log{max-height:240px;overflow:auto;white-space:pre-wrap;user-select:text;background:#071812;color:#b9e7c5;padding:10px;border-radius:8px;font:12px/1.45 ui-monospace,Consolas,monospace}
+.link{border:1px solid #71897b;border-radius:8px;padding:12px;margin:12px 0;overflow-wrap:anywhere}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}.metrics p{margin:4px 0}.metrics strong{display:block;font-size:22px}
+small{font-size:14px} [hidden]{display:none!important} @media(max-width:500px){main{padding:10px}section{padding:12px}button{width:100%}}

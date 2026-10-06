@@ -1,0 +1,371 @@
+/* Layout based on the user's editable SVG references, September 2026. */
+body.at-table {
+  --table-card-h: clamp(44px, min(11vw, calc((100dvh - 265px - 6 * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max))) / 5)), 180px);
+  --table-card-w: calc(var(--table-card-h) * .7);
+  --table-index: clamp(8px, calc(var(--table-card-h) * .19), 28px);
+  --side-width: 28%;
+  --info-width: 40%;
+}
+body.at-table #app { padding: 6px 12px; gap: 4px; }
+body.at-table .playing-field,
+body.at-table .playing-field:has(.player:nth-child(3)),
+body.at-table .playing-field:has(.player-top) { padding: 0; display: block; }
+body.at-table .playing-field .opponents { position: absolute; inset: 0; display: block; }
+body.at-table .playing-field .player {
+  position: absolute; top: 12px; width: var(--side-width); max-width: none; padding: 0;
+  display: grid; grid-template-columns: var(--info-width) minmax(0,1fr); gap: 6px;
+  align-items: start; margin: 0; transform: none; border: 0; background: transparent;
+}
+body.at-table .playing-field .player-left { left: 0; }
+body.at-table .playing-field .player-right { right: 0; }
+body.at-table .player-info { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 6px 3px; border: 1px solid transparent; border-radius: 9px; }
+/* Removed: duplicated the seat turn-glow from style.css .playing-field .player.active, framing name/status/counts separately from the cards. Same issue was already fixed for player-top below via .player-top.active .player-info -> transparent + the ::after seat frame; left/right now rely on the single seat-level glow too. */
+body.at-table .player-right:not(.player-top) .player-info { grid-column: 2; grid-row: 1; }
+body.at-table .playing-field .player-right:not(.player-top) { grid-template-columns: minmax(0,1fr) var(--info-width); }
+body.at-table .player-right:not(.player-top) .player-cards { grid-column: 1; grid-row: 1; }
+body.at-table .player-cards { min-width: 0; padding-top: 8px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+body.at-table .playing-field .speech { font-size: clamp(11px,1.35vw,21px); padding: 6px 9px; max-width: 100%; margin: 0; min-height: 2.7em; display: flex; align-items: center; justify-content: center; text-align: center; }
+body.at-table .playing-field .turn-badge { position: static; font-size: 11px; }
+body.at-table .playing-field .player strong { font-size: clamp(12px,1.4vw,21px); }
+body.at-table .playing-field .player p { font-size: 11px; margin: 4px 0; }
+body.at-table .playing-field .player small { font-size: 11px; }
+body.at-table .playing-field .seat-marks { flex-wrap: wrap; }
+body.at-table .playing-field .seat-marks .first-hand { font-size: 11px; }
+body.at-table .playing-field .center { width: 43%; height: 100%; padding: 0; justify-content: center; }
+body.at-table .playing-field .turn-message { display: none; }
+body.at-table .playing-field .table-announcement { position: static; width: auto; margin: 0; flex: 0 0 auto; gap: 0; }
+body.at-table .playing-field .table-announcement:has(.dealer-hand) { padding: 6px 0; }
+body.at-table .playing-field .pool-drawing { flex: 1 1 0; min-height: 0; width: 100%; }
+body.at-table .playing-field .trick-label { position: absolute; top: 0; font-size: 11px; }
+body.at-table .playing-field:has(.player-top) .trick-label { top: calc(var(--table-card-h) + 2px); }
+body.at-table .playing-field:has(.player-top) .center { padding-top: calc(var(--table-card-h) + 12px); }
+body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+  left: 29%; right: auto; top: -46px; width: 42%; margin: 0; transform: none;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+}
+body.at-table .player-top .player-info { flex-direction: row; justify-content: center; gap: 14px; padding: 2px; }
+body.at-table .player-top .player-info > div:last-child { order: -1; }
+body.at-table .player-top .avatar, body.at-table .player-top .turn-badge { display: none; }
+body.at-table .player-top .player-cards { padding: 0; width: 100%; max-width: 100%; }
+body.at-table .player-top .closed-hand, body.at-table .player-top .exposed { width: 100%; justify-content: center; }
+
+/* One size for every card on the table, including hands, talon and trick. */
+body.at-table[data-card-size] :is(.hand, .exposed, .dealer-hand, .closed-hand, .trick-cards, .player-cards) :is(.card, .card-back) {
+  width: var(--table-card-w) !important; min-width: var(--table-card-w) !important; height: var(--table-card-h) !important;
+  min-height: var(--table-card-h) !important; max-height: none !important; flex: 0 0 var(--table-card-w) !important;
+}
+body.at-table[data-card-size] .player-cards > .card-back { width: var(--table-card-w); height: var(--table-card-h); display: grid; margin: 0 auto; border-width: 2px; }
+body.at-table[data-card-size] :is(.hand,.exposed,.dealer-hand,.trick-cards) .card .corner,
+body.at-table[data-card-size] :is(.hand,.exposed,.dealer-hand,.trick-cards) .card .corner small { font-size: var(--table-index); }
+body.at-table .playing-field .exposed { width: 100%; align-items: center; }
+body.at-table .exposed .suit-group { max-width: 100%; }
+body.at-table .exposed .card { margin-left: calc(var(--table-card-w) * -.72); }
+body.at-table .exposed .suit-group + .suit-group { margin-top: 10px; }
+body.at-table .player:not(.player-top) .exposed .suit-group { padding-bottom: calc((var(--suit-count) - 1) * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max))); }
+body.at-table .exposed .suit-group .card:first-child { margin-left: 0; }
+body.at-table .player-top .exposed .suit-group + .suit-group { margin-top: 0; }
+body.at-table .player-top .exposed .suit-group { flex: 0 0 auto; max-width: none; }
+body.at-table .playing-field .player-top .player-cards .exposed { width: max-content; max-width: none; align-self: center; }
+body.at-table .playing-field .player-top .closed-hand .card-back { margin: 0 0 0 calc(var(--table-card-w) * -.72); }
+body.at-table .playing-field .player-top .closed-hand .card-back:first-child { margin-left: 0; }
+body.at-table .player:not(.player-top) .dealer-hand { flex-direction: column; gap: 8px; }
+body.at-table .collected-tricks {
+  position: relative; width: var(--table-card-w); height: var(--table-card-h);
+  margin: 0 10px 10px 0; flex: 0 0 auto;
+}
+body.at-table .dealer-hand .collected-tricks .card-back {
+  position: absolute; top: 0; left: 0; display: block;
+  transform: translate(calc(var(--stack-index) * 2px), calc(var(--stack-index) * 2px));
+}
+body.at-table .hand-label { width: 100%; margin: 0; }
+body.at-table .hand { padding: 5px 0 0; --hand-height: var(--table-card-h); --card-width: var(--table-card-w); }
+body.at-table .hand .card { margin-left: calc(var(--table-card-w) * -.53); }
+body.at-table .hand .suit-group .card:first-child { margin-left: 0; }
+body.at-table .hand-area { padding: 3px 8px; }
+body.at-table .trick-cards:not(:empty) { --trick-width: var(--table-card-w); }
+/* Separate the left and upper hands without narrowing the gap on the right. */
+@media(min-width:701px) {
+  body.at-table .playing-field:has(.player-top) .player-left .player-cards { transform: translateX(clamp(-20px, -1.2vw, -8px)); }
+  body.at-table .playing-field .player-top .player-cards { transform: translateX(clamp(5px, .7vw, 12px)); }
+  body.at-table .player-top .exposed .card:not(:first-child) { margin-left: calc(var(--table-card-w) * -.76); }
+}
+body.at-table .player:not(.player-top) .exposed .card { top: calc(var(--fan-index, 0) * clamp(var(--card-stair-min), var(--card-stair-vw), var(--card-stair-max))); }
+body.at-table .exposed .card:nth-child(2) { --fan-index: 1; }
+body.at-table .exposed .card:nth-child(3) { --fan-index: 2; }
+body.at-table .exposed .card:nth-child(4) { --fan-index: 3; }
+body.at-table .exposed .card:nth-child(5) { --fan-index: 4; }
+body.at-table .exposed .card:nth-child(6) { --fan-index: 5; }
+body.at-table .exposed .card:nth-child(7) { --fan-index: 6; }
+body.at-table .exposed .card:nth-child(8) { --fan-index: 7; }
+body.at-table .exposed .card:nth-child(9) { --fan-index: 8; }
+body.at-table .exposed .card:nth-child(10) { --fan-index: 9; }
+/* Reserve the same space regardless of whose turn it is. */
+body.at-table .playing-field .turn-badge { display: none; }
+body.at-table:not([data-stage="lobby"]) .action-area { height: auto; min-height: 36px; padding-top: 0; overflow: visible; flex-wrap: wrap; }
+body.at-table .action-area button[aria-pressed="true"] { background: #b6d8a5; color: #102b1b; border-color: #e7db8c; box-shadow: inset 0 0 0 2px #526e3c; }
+body.at-table:not([data-stage="lobby"]) .action-area button { min-height: 32px; padding: 4px 10px; }
+body.at-table:not([data-stage="lobby"]) .hand { min-height: calc(var(--table-card-h) + 5px); }
+body.at-table .hand-label { height: 24px; min-height: 24px; overflow: hidden; }
+/* Before the deal the label is a real row, so it must fit the microphone
+   and trick counter rather than clipping them to the old text-only height. */
+body.at-table[data-stage="lobby"] .hand-label {
+  height: auto;
+  min-height: 36px;
+  overflow: visible;
+  align-items: center;
+}
+/* Keep the complete rank and suit inside the exposed strip in every deck. */
+body.at-table[data-card-size] .card > .corner:not(.bottom) { left: 2px; top: 3px; display: flex; flex-direction: column; align-items: center; }
+body.at-table[data-card-size] .card .corner small { display: block !important; margin: 0; padding: 0; }
+body.at-table .exposed .card,
+body.at-table .player-top .exposed .card:not(:first-child) { margin-left: calc(var(--table-card-w) * -.64); }
+body.at-table .exposed .suit-group .card:first-child { margin-left: 0; }
+@media(max-width:700px) {
+  body.at-table { --side-width: 28%; --info-width: 100%; --table-card-h: clamp(44px, min(18dvh, 17vw, calc((100dvh - 190px) / 4.4)), 100px); }
+  body.at-table #app { padding: 4px 6px; }
+  body.at-table .playing-field .player, body.at-table .playing-field .player-right:not(.player-top) { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+  body.at-table .player-info { gap: 2px; padding: 2px; }
+  body.at-table .player-info .avatar, body.at-table .player-info p, body.at-table .player-info small { display: none; }
+  body.at-table .player-cards { padding-top: 2px; }
+  body.at-table .playing-field .speech { font-size: 11px; padding: 3px; }
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) { top: 0; }
+  body.at-table .playing-field:has(.player-top) .player:not(.player-top) { top: calc(var(--table-card-h) + 50px); }
+  body.at-table .playing-field:has(.player-top) .center { padding-top: calc(var(--table-card-h) + 42px); }
+  body.at-table .playing-field:has(.player-top) .trick-label { top: calc(var(--table-card-h) + 42px); }
+  body.at-table .playing-field:has(.player:nth-child(3)) .player:first-child,
+  body.at-table .playing-field:has(.player:nth-child(3)) .player:last-child { margin-top: 0; }
+  body.at-table .player-top .player-info { gap: 4px; flex-wrap: wrap; }
+  body.at-table .player-top .exposed { gap: 2px; }
+}
+@media(max-height:650px) {
+  body.at-table .player-info { gap: 3px; }
+  body.at-table .player-info .avatar, body.at-table .player-info p { display: none; }
+  body.at-table .playing-field .player { top: 2px; }
+}
+
+
+/* 2026-09: larger, clearer player status text on normal-size tables. */
+@media (min-width: 701px) and (min-height: 651px) {
+  body.at-table .playing-field .player strong { font-size: clamp(15px, 1.55vw, 23px); line-height: 1.1; }
+  body.at-table .playing-field .player p { font-size: clamp(13px, 1.05vw, 16px); line-height: 1.15; margin: 4px 0; }
+  body.at-table .playing-field .player small { font-size: clamp(14px, 1.1vw, 17px); line-height: 1.15; }
+  body.at-table .playing-field .seat-marks { gap: 11px; margin-top: 6px; }
+  body.at-table .playing-field .seat-marks > span[data-taken],
+  body.at-table .own-taken,
+  body.at-table .top-card-stats > span[data-taken] {
+    box-sizing: border-box;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px !important;
+    font-weight: 700;
+    line-height: 1;
+  }
+}
+
+/* The upper player's speech/status stays above the name. */
+body.at-table .player-top .player-info > div:last-child { order: initial; }
+
+/* On a four-player table vertical room is tight above the upper hand:
+   move card count and trick count to the right of that hand. */
+body.at-table .top-card-stats { display: none; }
+body.at-table .player-top .player-info p,
+body.at-table .player-top .player-info small,
+body.at-table .player-top .player-info .seat-marks { display: none; }
+body.at-table .player-top .player-cards {
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+}
+body.at-table .player-top .top-card-stats {
+  display: flex;
+  position: absolute;
+  left: calc(100% + clamp(18px, 2vw, 34px));
+  top: 4px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  white-space: nowrap;
+  z-index: 4;
+}
+body.at-table .player-top .top-card-stats p {
+  margin: 0;
+  font-size: clamp(13px, 1.05vw, 16px);
+}
+body.at-table .player-top .top-card-stats small {
+  font-size: clamp(14px, 1.1vw, 17px);
+  margin-bottom: 4px;
+}
+body.at-table .player-top .top-card-stats > span[data-taken] {
+  background: #e2ddbf;
+  color: #303a2e;
+  margin-top: 1px;
+}
+
+/* Keep the trick over the centre of the pool drawing, but place every played
+   card slightly toward the player who played it.  The offsets are deliberately
+   smaller than one card dimension, so neighbouring cards still overlap a little. */
+body.at-table .playing-field .trick-cards:not(:empty) {
+  --trick-w: var(--table-card-w);
+  --trick-h: var(--table-card-h);
+  box-sizing: content-box;
+  width: calc(var(--trick-w) * 2.55);
+  height: calc(var(--trick-h) * 2.55);
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+  display: block;
+}
+body.at-table .playing-field .trick-cards > div {
+  position: absolute;
+  left: 50%;
+  top: 50% !important;
+  width: var(--trick-w);
+  height: var(--trick-h);
+  margin: 0 !important;
+  z-index: calc(10 + var(--trick-order, 0));
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+body.at-table .playing-field .trick-cards > .trick-seat-left {
+  transform: translate(calc(-50% - var(--trick-w) * .82), -50%);
+}
+body.at-table .playing-field .trick-cards > .trick-seat-right {
+  transform: translate(calc(-50% + var(--trick-w) * .82), -50%);
+}
+body.at-table .playing-field .trick-cards > .trick-seat-top {
+  transform: translate(-50%, calc(-50% - var(--trick-h) * .60));
+}
+body.at-table .playing-field .trick-cards > .trick-seat-self {
+  transform: translate(-50%, calc(-50% + var(--trick-h) * .60));
+}
+body.at-table .playing-field .trick-cards > div > small {
+  margin-top: 4px;
+}
+
+
+/* v4: give the upper player's labels more room away from the hand. */
+body.at-table .player-top .player-info {
+  position: relative;
+  transform: translateX(clamp(-54px, -4vw, -26px));
+}
+
+/* v5: keep the three-player action controls fully visible and use the free
+   space above the hand instead of a scrolling action strip. */
+body.at-table .three-player-table + .hand-area .hand-label {
+  position: relative;
+  top: -6px;
+  margin-bottom: -6px;
+}
+body.at-table .three-player-table + .hand-area .action-area {
+  height: auto;
+  min-height: 36px;
+  overflow: visible;
+  flex-wrap: wrap;
+}
+
+/* v5: four-player upper seat.  Move speech/name back toward the cards. */
+body.at-table .player-top .player-info {
+  transform: translateX(clamp(-32px, -2.1vw, -14px));
+  z-index: 5;
+}
+
+/* Keep connection state, card count and tricks visible at the right of the
+   upper hand.  Explicit visibility here also overrides compact-layout rules. */
+body.at-table .player-top .top-card-stats {
+  display: flex !important;
+  left: calc(100% + clamp(10px, 1.2vw, 20px));
+  top: 0;
+  z-index: 6;
+}
+body.at-table .player-top .top-card-stats p,
+body.at-table .player-top .top-card-stats small {
+  display: block !important;
+  visibility: visible !important;
+}
+body.at-table .player-top .top-card-stats > span[data-taken] {
+  display: inline-flex !important;
+  margin-top: 3px;
+}
+
+
+/* v6: four-player upper seat is one three-column unit.  Keeping the info,
+   cards and counters inside the article makes the active-turn frame surround
+   the complete seat instead of only the cards. */
+@media (min-width: 701px) {
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+    left: 25%;
+    right: auto;
+    top: -30px;
+    width: 50%;
+    display: grid;
+    grid-template-columns: minmax(115px, .72fr) minmax(0, 2.15fr) minmax(115px, .78fr);
+    align-items: start;
+    column-gap: clamp(8px, 1vw, 16px);
+    padding: 4px 8px 7px;
+    box-sizing: border-box;
+  }
+  body.at-table .player-top .player-info {
+    grid-column: 1;
+    grid-row: 1;
+    transform: none;
+    align-self: start;
+    padding-top: 0;
+  }
+  body.at-table .player-top .player-cards {
+    grid-column: 2;
+    grid-row: 1;
+    transform: none;
+    align-self: start;
+  }
+  body.at-table .player-top .top-card-stats {
+    grid-column: 3;
+    grid-row: 1;
+    position: static;
+    display: flex !important;
+    transform: none;
+    align-self: start;
+    justify-self: center;
+    padding-top: 2px;
+  }
+  body.at-table .player-top .top-card-stats p,
+  body.at-table .player-top .top-card-stats small {
+    display: block !important;
+    visibility: visible !important;
+  }
+}
+
+/* v6: on a three-player table the talon occupies the top centre.  Put the
+   trick counter below the two talon cards instead of letting its top edge show
+   through behind them. */
+body.at-table .three-player-table .trick-label {
+  top: calc(var(--table-card-h) + 12px);
+}
+
+/* v7: four-player upper seat — use more of the free space to the right.
+   The whole article remains the active-turn target, so the yellow frame still
+   surrounds the labels, hand and counters.  The wider hand column lets the
+   cards overlap less while the statistics move right together with it. */
+@media (min-width: 701px) {
+  body.at-table .playing-field:has(.player:nth-child(3)) .player.player-top:nth-child(2) {
+    width: 58%;
+    grid-template-columns: minmax(115px, .68fr) minmax(0, 2.75fr) minmax(115px, .78fr);
+  }
+  body.at-table .player-top .exposed .card:not(:first-child) {
+    margin-left: calc(var(--table-card-w) * -.52);
+  }
+  body.at-table .player-top .closed-hand .card-back {
+    margin-left: calc(var(--table-card-w) * -.60);
+  }
+  body.at-table .player-top .closed-hand .card-back:first-child {
+    margin-left: 0;
+  }
+}

@@ -1,0 +1,63 @@
+/.build/
+/dist/
+/web/node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+/internal/adminweb/static/*
+!/internal/adminweb/static/.gitkeep
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/libs/
+/android/local.properties
+*.log
+
+# Временные архивы и патчи в корне проекта
+/*.zip
+
+# Служебные заметки инструментов, не относящиеся к проекту
+/restart.txt
+
+# IDE / ОС
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Рабочие/кэш-каталоги, не относящиеся к репозиторию
+/.info/
+/.gocache/
+/.android/
+/.adb-home/
+
+# Резервные копии файлов
+*.000
+*.999
+*.bak
+
+# Локальные служебные файлы, оставленные на диске
+/dir
+/t1.ps1
+/all1.ps1
+/get-atlas.ps1
+/clean-atlas.ps1
+/docs/load.txt
+
+# Private build/deployment settings and generated embedded site configuration
+/project.local.json
+/config/local/*
+!/config/local/.gitkeep
+/signaling-data/
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key
+adbkey
+adbkey.pub
+id_rsa
+id_ed25519

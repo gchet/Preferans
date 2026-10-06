@@ -1,0 +1,9 @@
+.debug-settings { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.debug-settings .check { margin: 0; }
+[data-debug-waiting] { cursor: context-menu; pointer-events: auto; -webkit-touch-callout: none; }
+.debug-turn-cards, .debug-turn-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.debug-turn-cards .card, .debug-turn-options .card { width: 56px; height: 80px; flex: 0 0 56px; margin: 0; transform: none; }
+.debug-turn-options button { display: flex; gap: 4px; align-items: center; justify-content: center; }
+.debug-discard-card { padding: 0; background: transparent; border: 2px solid transparent; border-radius: 8px; }
+.debug-discard-card[aria-pressed="true"] { border-color: #edce76; box-shadow: 0 0 0 2px #edce76; transform: translateY(-5px); }
+.debug-discard-card:hover { background: transparent; }

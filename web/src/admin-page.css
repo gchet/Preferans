@@ -1,0 +1,39 @@
+:root { color-scheme: dark; --line:#334155; --accent:#a5d6c3; }
+* { box-sizing: border-box; }
+body { margin:0; background:#0d1720; color:#edf3f8; font:16px/1.5 system-ui,sans-serif; }
+#admin-app { max-width:1280px; margin:0 auto; padding:24px; }
+h1 { font-size:1.8rem; } h3 { margin:0; }
+button,input { font:inherit; }
+button { cursor:pointer; padding:8px 14px; background:#263746; color:inherit; border:1px solid #51677c; border-radius:8px; }
+button:hover { background:#345066; } button:disabled { opacity:.45; cursor:default; }
+button:focus-visible,input:focus-visible { outline:2px solid #a5d6c3; outline-offset:2px; }
+label { display:grid; gap:6px; margin:12px 0; }
+input { width:100%; padding:10px; color:inherit; background:#101e29; border:1px solid #51677c; border-radius:8px; }
+.admin-login { max-width:440px; margin:8vh auto; padding:24px; border:1px solid var(--line); border-radius:12px; }
+.admin-page-header,.admin-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.admin-password-change { margin:20px 0; padding:16px; border:1px solid var(--line); border-radius:10px; }
+.admin-password-change form { max-width:560px; }
+summary { cursor:pointer; }
+.admin-warning { color:#ffe2a0; }
+.muted { color:#9fb2c5; }
+.admin-table-scroll { overflow-x:auto; margin-top:16px; }
+.admin-table { width:100%; min-width:560px; border-collapse:collapse; table-layout:fixed; }
+.admin-table th,.admin-table td { padding:12px; vertical-align:top; text-align:left; border:1px solid var(--line); overflow-wrap:anywhere; }
+.admin-table th:first-child { width:22%; } .admin-table th:nth-child(2) { width:28%; }
+.admin-item-heading { display:flex; justify-content:space-between; align-items:start; gap:8px; }
+.admin-delete { flex:0 0 auto; width:34px; height:34px; padding:0; font-size:24px; line-height:1; }
+.danger { background:#693641; border-color:#bc7180; }
+.admin-device { display:block; font-family:monospace; }
+.admin-room [hidden] { display:none; }
+.admin-room-toggle { display:flex; align-items:center; gap:6px; padding:4px 0; border:0; background:transparent; text-align:left; min-width:0; overflow-wrap:anywhere; }
+.admin-room-arrow { flex:0 0 auto; }
+.admin-copy { display:block; margin-top:8px; padding:6px 12px; font-size:.9rem; }
+.admin-clipboard { position:fixed; left:0; top:0; width:1px; height:1px; opacity:0; pointer-events:none; }
+.admin-members { list-style:none; padding:0; margin:0; }
+.admin-members li { display:flex; justify-content:space-between; gap:8px; padding:4px 0 12px; }
+.admin-party { border-top:1px solid var(--line); padding:12px 0; overflow-wrap:anywhere; }
+.admin-party:first-child { border-top:0; padding-top:0; }
+.app-confirm { max-width:560px; width:calc(100% - 32px); color:inherit; background:#1b2a38; border:1px solid #51677c; border-radius:12px; padding:24px; }
+.app-confirm::backdrop { background:rgba(0,0,0,.7); }
+.toolbar { display:flex; gap:12px; justify-content:flex-end; }
+@media(max-width:650px) { #admin-app {padding:12px;} .admin-table th,.admin-table td {padding:8px;} }

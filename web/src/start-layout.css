@@ -1,0 +1,22 @@
+/* Compact welcome screen without hiding content or suppressing scrolling. */
+body:not(.at-table) #app { padding-top: 12px; padding-bottom: 12px; }
+body:not(.at-table) .welcome { padding: 8px 0 14px; }
+body:not(.at-table) .welcome h1 { font-size: clamp(24px, 3.5vw, 48px); letter-spacing: -1px; }
+body:not(.at-table) .welcome p:last-child { margin: 8px 0 0; }
+body:not(.at-table) .start-grid { gap: 16px; }
+body:not(.at-table) .surface { padding: 18px; }
+body:not(.at-table) .surface h2 { margin-bottom: 12px; }
+body:not(.at-table) .surface label { margin-bottom: 10px; }
+body:not(.at-table) .surface h3 { margin-top: 12px; }
+@media (min-width: 600px) {
+  body:not(.at-table) .start-grid { grid-template-columns: 1fr 1fr; }
+  body:not(.at-table) .welcome h1 { white-space: nowrap; }
+}
+@media (max-height: 650px) and (min-width: 600px) {
+  body:not(.at-table) .topbar { height: 52px; }
+  body:not(.at-table) .welcome { padding: 0 0 8px; }
+  body:not(.at-table) .welcome h1 { font-size: clamp(24px, 3vw, 36px); }
+  body:not(.at-table) .surface { padding: 12px; }
+  body:not(.at-table) .surface input,
+  body:not(.at-table) .surface select { min-height: 36px; padding: 8px; margin-top: 4px; }
+}
