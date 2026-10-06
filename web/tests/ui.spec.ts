@@ -176,7 +176,10 @@ for(const gesture of ['right-click','long-press'])test(`debug bot turn accepts $
   await page.getByLabel('Боты для отладки').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await expect(page.locator('.hand .card')).toHaveCount(10);
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('[data-action="pass"]').click();
   const waiting=page.locator('.player[data-debug-waiting="1"]');
   await expect(waiting).toBeVisible();
@@ -808,7 +811,10 @@ for (const n of [3,4]) test('table preferences and shared pause clock survive re
   await page.getByLabel('Боты для отладки').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.locator('[data-action="ready"]').click();
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('[data-action="start"]').click();
+  await expect(page.locator('.hand .card')).toHaveCount(10);
+  await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('#pause-game').click();
   await expect(page.locator('#pause-game')).toHaveText('Продолжить игру');
   await expect(page.locator('#table-progress')).toContainText('Пауза-тест');
