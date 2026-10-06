@@ -95,8 +95,9 @@ test.describe('local offline interface',()=>{
     });
     for(const size of [{width:412,height:915},{width:915,height:412}]){
       await page.setViewportSize(size);
-      // Wait for both layout and the mobile visual viewport after rotation.
-      await expect.poll(()=>page.evaluate(()=>({width:visualViewport?.width,height:visualViewport?.height}))).toEqual(size);
+      // Playwright changes the CSS viewport. On mobile emulation the visual
+      // viewport can be scaled independently, so wait for layout dimensions.
+      await expect.poll(()=>page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual(size);
       await page.evaluate(()=>new Promise<void>(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done()))));
       await page.getByRole('button',{name:'Создать стол →'}).tap();
       await expect(page.locator('.center.lobby')).toBeVisible();
