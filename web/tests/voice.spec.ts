@@ -90,6 +90,10 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
         return receiving;
       }),{timeout:20000}).toBe(2);
     }
+    const languagePicker=clients[0].page.locator('.topbar [data-language-picker]');
+    await Promise.all([clients[0].page.waitForNavigation(), languagePicker.selectOption('en')]);
+    await expect(clients[0].page.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true',{timeout:15000});
+    await expect(clients[0].page.locator('[data-voice-seat].offline')).toHaveCount(0,{timeout:30000});
     const host=clients[0].page;
     const mutedAudio=()=>host.locator('[data-voice-audio]').evaluateAll(nodes=>nodes.map(n=>({seat:(n as HTMLElement).dataset.voiceAudio,muted:(n as HTMLAudioElement).muted})).sort((a,b)=>Number(a.seat)-Number(b.seat)));
     await expect(host.locator('[data-speaker]')).toHaveCount(3);
@@ -128,6 +132,12 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     if(roomsMode)await rpc(2,'room-exit');
     await expect.poll(()=>clients[2].page.evaluate(()=>(window as any).__tracks.every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBeTruthy();
     await expect(clients[2].page.locator('[data-voice-audio]')).toHaveCount(0);
+    await host.evaluate(() => {
+      const track=(window as any).__tracks.find((candidate:MediaStreamTrack)=>candidate.readyState==='live');
+      track?.dispatchEvent(new Event('ended'));
+    });
+    await expect(host.locator('#notice')).toContainText('Микрофон отключён системой');
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
   } finally {
     for(const c of contexts) await c.unrouteAll({behavior:'wait'});
     await browser.close();

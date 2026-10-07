@@ -32,9 +32,19 @@ export class VoiceChat {
   private heartbeat = 0;
   private soundEnabled = true;
   private mutedPlayers = new Set<string>();
+  private resumeMic?: {roomId: string; seat: number};
   private outbound: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setInterval>;
   constructor(private rpc: RPC, private notify: (message: string) => void) {
+    try {
+      const saved = sessionStorage.getItem('preferans-voice-resume');
+      if (saved) {
+        sessionStorage.removeItem('preferans-voice-resume');
+        const value = JSON.parse(saved) as {roomId?: unknown; seat?: unknown};
+        if (typeof value.roomId === 'string' && typeof value.seat === 'number')
+          this.resumeMic = {roomId:value.roomId, seat:value.seat};
+      }
+    } catch { /* Session storage may be unavailable in restricted WebViews. */ }
     this.timer = setInterval(() => void this.tick(), 500);
     document.addEventListener('click', e => {
       const speaker=(e.target as Element).closest<HTMLButtonElement>('[data-speaker]');
@@ -68,10 +78,21 @@ export class VoiceChat {
       const [urls, username, credential] = entry.split('|');
       return {urls, ...(username ? {username, credential} : {})};
     });
+    if (this.resumeMic && room && (room.id !== this.resumeMic.roomId || room.seat !== this.resumeMic.seat)) this.resumeMic = undefined;
+    if (this.resumeMic && room?.id === this.resumeMic.roomId && room.seat === this.resumeMic.seat) {
+      this.resumeMic = undefined;
+      queueMicrotask(() => void this.toggle());
+    }
     for (const [seat, peer] of this.peers) {
       if (!room || room.players[seat]?.bot !== false || !this.connected[seat]) { this.close(peer); this.peers.delete(seat); }
     }
     this.paint();
+  }
+  preserveMicrophoneOnReload() {
+    if (!this.stream || !this.room) return;
+    try {
+      sessionStorage.setItem('preferans-voice-resume', JSON.stringify({roomId:this.room.id, seat:this.room.seat}));
+    } catch { /* A reload without storage will require the user to re-enable the mic. */ }
   }
   private send(kind: string, to = -1, payload?: unknown, peer?: Remote) {
     if (!this.room) return Promise.resolve();
@@ -191,7 +212,12 @@ export class VoiceChat {
       if (session !== this.session || !this.room || document.hidden) { stream.getTracks().forEach(t => t.stop()); return; }
       this.stream = stream;
       const track = stream.getAudioTracks()[0];
-      track.onended = () => { void this.mute(); };
+      track.onended = () => {
+        if (this.stream?.getAudioTracks().includes(track)) {
+          this.notify(t('web.voice.text017'));
+          void this.mute();
+        }
+      };
       await Promise.all([...this.peers.values()].map(p => p.sender?.replaceTrack(track).catch(() => {})));
       await this.send('hello');
     } catch (e) {

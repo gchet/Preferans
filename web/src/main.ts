@@ -1353,6 +1353,7 @@ document.addEventListener("change", (e) => {
       await rpc('appearance',{appearance:{...latest.appearance,language:next}});
       window.PreferansAndroid?.setLanguage?.(next);
       await window.preferansLanguage?.(next);
+      voice.preserveMicrophoneOnReload();
       location.reload();
     });
     return;

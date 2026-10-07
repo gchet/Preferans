@@ -647,6 +647,7 @@
   "web.voice.text014": "Allow microphone access in the app or system settings.",
   "web.voice.text015": "Microphone unavailable in this browser version",
   "web.voice.text016": "Voice chat: disconnected",
+  "web.voice.text017": "The system or device stopped the microphone. Tap its icon to turn it on again.",
   "android.app.name": "Preferans",
   "android.app.network_name": "Preferans — Connection",
   "android.update.protocol": "Invalid update address protocol",
