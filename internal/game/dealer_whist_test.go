@@ -10,19 +10,26 @@ func dealerWhistChoice(t *testing.T, level int) *State {
 	t.Helper()
 	r := DefaultRules()
 	r.Stalingrad = false
+	r.TenCheck = false
 	r.DealerBonus = false
 	s := auctionWinner(t, 4, r, Contract{Level: level, Suit: 1})
 	s = step(t, s, s.Actor(), "declare", s.Bid, s.Hands[s.Actor()][0], s.Hands[s.Actor()][1])
 	s = step(t, s, s.Actor(), "pass", nil)
 	s = step(t, s, s.Actor(), "pass", nil)
-	if s.Stage != "return" || s.Actor() != s.Defenders[0] {
-		t.Fatal("first defender must retain the first chance to rewhist")
+	if s.Stage == "return" {
+		if s.Actor() != s.Defenders[0] {
+			t.Fatal("first defender must retain the first chance to rewhist")
+		}
+		s = step(t, s, s.Actor(), "pass", nil)
 	}
-	return step(t, s, s.Actor(), "pass", nil)
+	if s.Stage != "dealer-choice" || s.Actor() != s.Dealer {
+		t.Fatal("dealer should be offered after final defender passes")
+	}
+	return s
 }
 
 func TestDealerWhistSelectionAndPrivacy(t *testing.T) {
-	for _, level := range []int{6, 7} {
+	for _, level := range []int{6, 7, 8, 9, 10} {
 		for index, action := range []string{"dealer-first", "dealer-second"} {
 			s := dealerWhistChoice(t, level)
 			if s.Stage != "dealer-choice" || s.Actor() != s.Dealer {
@@ -125,17 +132,49 @@ func TestDealerWhistDelayedOpeningAndReset(t *testing.T) {
 	}
 }
 
+func TestDealerWhistControllerSurvivesSaveDuringPlay(t *testing.T) {
+	s := dealerWhistChoice(t, 8)
+	s = step(t, s, s.Dealer, "dealer-first", nil)
+	s = step(t, s, s.Dealer, "whist", nil)
+	s.Turn = s.Defenders[0]
+	s.SetPaused(true, 100)
+
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored State
+	if err := json.Unmarshal(data, &restored); err != nil {
+		t.Fatal(err)
+	}
+	restored.SetPaused(false, 110)
+	v := restored.View(restored.Dealer)
+	if restored.Controller != restored.Dealer || !restored.DealerWhist || restored.Actor() != restored.Dealer {
+		t.Fatal("dealer control was lost after restoring the saved game")
+	}
+	if !reflect.DeepEqual(v.Actions, []string{"play"}) || !reflect.DeepEqual(v.PlayHand, restored.Hands[restored.Turn]) {
+		t.Fatalf("restored dealer cannot play defence: actions=%v playHand=%v", v.Actions, v.PlayHand)
+	}
+	card := restored.LegalCards()[0]
+	if _, err := Apply(&restored, Command{ID: ID(), Seat: restored.Dealer, Revision: restored.Revision, Action: "play", Cards: []Card{card}}, nil); err != nil {
+		t.Fatalf("dealer defensive play rejected after restore: %v", err)
+	}
+}
+
 func TestDealerWhistEligibility(t *testing.T) {
 	for _, n := range []int{3, 4} {
-		for _, level := range []int{6, 7, 8, 9} {
+		for _, level := range []int{6, 7, 8, 9, 10} {
 			r := DefaultRules()
 			r.Stalingrad = false
+			r.TenCheck = false
 			s := auctionWinner(t, n, r, Contract{Level: level, Suit: 1})
 			s = step(t, s, s.Actor(), "declare", s.Bid, s.Hands[s.Actor()][0], s.Hands[s.Actor()][1])
 			s = step(t, s, s.Actor(), "pass", nil)
 			s = step(t, s, s.Actor(), "pass", nil)
-			s = step(t, s, s.Actor(), "pass", nil)
-			if (s.Stage == "dealer-choice") != (n == 4 && level <= 7) {
+			if level <= 7 {
+				s = step(t, s, s.Actor(), "pass", nil)
+			}
+			if (s.Stage == "dealer-choice") != (n == 4) {
 				t.Fatalf("unexpected dealer eligibility: %d seats, level %d, stage %s", n, level, s.Stage)
 			}
 		}

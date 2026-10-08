@@ -1,6 +1,9 @@
 package game
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestBotPassesThenRewhists(t *testing.T) {
 	for _, n := range []int{3, 4} {
@@ -49,16 +52,44 @@ func TestBotPassesThenRewhists(t *testing.T) {
 
 func TestFirstDefenderMayKeepPassAfterTwoPasses(t *testing.T) {
 	for _, n := range []int{3, 4} {
-		s := auctionWinner(t, n, DefaultRules(), Contract{Level: 8, Suit: 1})
-		s = step(t, s, s.Actor(), "declare", s.Bid, s.Hands[s.Actor()][0], s.Hands[s.Actor()][1])
-		s = step(t, s, s.Actor(), "pass", nil)
-		s = step(t, s, s.Actor(), "pass", nil)
-		if s.Stage != "return" || s.HalfSeat != -1 {
-			t.Fatal("missing return after passes")
+		for _, level := range []int{6, 7} {
+			s := auctionWinner(t, n, DefaultRules(), Contract{Level: level, Suit: 1})
+			s = step(t, s, s.Actor(), "declare", s.Bid, s.Hands[s.Actor()][0], s.Hands[s.Actor()][1])
+			s = step(t, s, s.Actor(), "pass", nil)
+			s = step(t, s, s.Actor(), "pass", nil)
+			if s.Stage != "return" || s.HalfSeat != -1 || !slices.Contains(s.View(s.Actor()).Actions, "whist") {
+				t.Fatalf("first defender must be allowed to rewhist on %d", level)
+			}
+			s = step(t, s, s.Actor(), "pass", nil)
+			if s.Stage != "round" {
+				if n != 4 || s.Stage != "dealer-choice" {
+					t.Fatal("confirmed pass must finish the deal or offer the four-player dealer choice")
+				}
+				s = step(t, s, s.Dealer, "dealer-skip", nil)
+				if s.Stage != "round" {
+					t.Fatal("dealer refusal must finish the deal")
+				}
+			}
 		}
-		s = step(t, s, s.Actor(), "pass", nil)
-		if s.Stage != "round" {
-			t.Fatal("confirmed pass must finish the deal")
+		for _, level := range []int{8, 9} {
+			s := auctionWinner(t, n, DefaultRules(), Contract{Level: level, Suit: 1})
+			s = step(t, s, s.Actor(), "declare", s.Bid, s.Hands[s.Actor()][0], s.Hands[s.Actor()][1])
+			s = step(t, s, s.Actor(), "pass", nil)
+			s = step(t, s, s.Actor(), "pass", nil)
+			if n == 4 {
+				if s.Stage != "dealer-choice" || s.Actor() != s.Dealer {
+					t.Fatalf("dealer must get a choice after both defenders pass on %d", level)
+				}
+				s = step(t, s, s.Dealer, "dealer-skip", nil)
+			} else if s.Stage != "round" {
+				t.Fatalf("first defender must not rewhist on %d; got stage %s", level, s.Stage)
+			}
+			if s.Stage != "round" {
+				t.Fatalf("pass sequence must finish level %d; got stage %s", level, s.Stage)
+			}
+			if _, err := Apply(s, Command{ID: ID(), Seat: s.Defenders[0], Revision: s.Revision, Action: "whist"}, nil); err == nil {
+				t.Fatalf("rewhist on %d was accepted after both passed", level)
+			}
 		}
 	}
 }

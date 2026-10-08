@@ -18,9 +18,14 @@ func TestTenWhistAndClaim(t *testing.T) {
 		}
 		passed := step(t, s, s.Actor(), "pass", nil)
 		passed = step(t, passed, passed.Actor(), "pass", nil)
-		passed = step(t, passed, passed.Actor(), "pass", nil)
+		if n == 4 {
+			if passed.Stage != "dealer-choice" || passed.Actor() != passed.Dealer {
+				t.Fatal("four-player dealer should be offered the ten after both defenders pass")
+			}
+			passed = step(t, passed, passed.Dealer, "dealer-skip", nil)
+		}
 		if passed.Stage != "round" || passed.Pool[passed.Declarer] != 10 {
-			t.Fatal("two passes should concede ten")
+			t.Fatal("declined ten was not scored")
 		}
 		s = step(t, s, s.Actor(), "whist", nil)
 		s = step(t, s, s.Actor(), "pass", nil)

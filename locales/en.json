@@ -28,7 +28,7 @@
   "web.dealer_whist.second": "2nd defender",
   "web.dealer_whist.choose": "Rewhist? Choose whose cards to inspect",
   "web.dealer_whist.inspect": "{p0}'s cards. Choose: whist or pass",
-  "web.dealer_whist.rule": "In four-player six- and seven-trick contracts, after two passes or a declined rewhist following a half-whist, the dealer may inspect one defender's hand and choose Whist or Pass. If whisting, the dealer controls both hands openly; the half-whist is cancelled and whists and undertrick liability belong to the dealer. If the dealer declines, the half-whist score is retained.",
+  "web.dealer_whist.rule": "In four-player contracts where whisting is allowed, after both defenders finally decline, the dealer may inspect either defender's hand and choose Whist or Pass. On six and seven, the first defender may change Pass to Whist before that; on other games this option is unavailable. If the dealer whists, they control both hands openly; any half-whist is cancelled, and whists and undertrick liability belong to the dealer. If the dealer declines, the half-whist score is retained.",
   "web.start.waiting": "Waiting for readiness…",
   "web.start.not_ready": "Not ready yet: {p0}",
   "web.update.address_hint": "Double-tap the empty field to use the suggested address.",

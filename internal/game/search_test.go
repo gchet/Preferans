@@ -22,6 +22,12 @@ func searchTestDeal(t *testing.T, n int, contract *Contract) *State {
 	} else {
 		s = auctionWinner(t, n, DefaultRules(), *contract)
 		for s.Stage != "play" {
+			if s.Stage == "defend" && s.Turn == s.Defenders[0] {
+				// Ensure the fixture reaches play without relying on an illegal
+				// rewhist after both defenders pass on eight or higher.
+				s = step(t, s, s.Actor(), "whist", nil)
+				continue
+			}
 			c := BotCommand(s.View(s.Actor()))
 			var err error
 			s, err = Apply(s, c, nil)

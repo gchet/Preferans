@@ -193,7 +193,10 @@ func (s *State) View(seat int) View {
 	case "option":
 		v.Actions = []string{"whist", "half"}
 	case "return":
-		v.Actions = []string{"pass", "whist"}
+		v.Actions = []string{"pass"}
+		if s.Contract.Level <= 7 {
+			v.Actions = append(v.Actions, "whist")
+		}
 	case "dealer-choice":
 		v.Actions = []string{"dealer-skip", "dealer-first", "dealer-second"}
 	case "dealer-whist":

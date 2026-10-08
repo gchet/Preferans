@@ -308,10 +308,17 @@ func (s *State) apply(c Command, deck []Card) error {
 			return nil
 		}
 		if s.Defence[s.Defenders[0]] == 1 && s.Defence[s.Defenders[1]] == 1 {
-			// Give the first defender a chance to whist after two passes.
 			s.HalfSeat = -1
-			s.Stage = "return"
-			s.Turn = s.Defenders[0]
+			if s.Contract.Level <= 7 {
+				// On six/seven the first defender may change a pass into a whist.
+				s.Stage = "return"
+				s.Turn = s.Defenders[0]
+				return nil
+			}
+			if s.offerDealerWhist() {
+				return nil
+			}
+			s.resolveDefence()
 			return nil
 		}
 		s.resolveDefence()
@@ -340,7 +347,7 @@ func (s *State) apply(c Command, deck []Card) error {
 			s.score()
 			return nil
 		}
-		if c.Action != "whist" {
+		if c.Action != "whist" || s.Contract.Level > 7 {
 			return locales.Errorf("go.internal.game.engine.text026")
 		}
 		if s.HalfSeat >= 0 {
@@ -560,9 +567,9 @@ func (s *State) resolveDefence() {
 	s.beginTrick(s.Active()[0])
 }
 
-// The dealer acts only after both defenders finally decline a six/seven game.
+// In four-player games, the dealer may act after both defenders finally decline.
 func (s *State) offerDealerWhist() bool {
-	if len(s.Players) != 4 || s.Contract == nil || s.Contract.Misere || s.Contract.Level < 6 || s.Contract.Level > 7 {
+	if len(s.Players) != 4 || s.Contract == nil || s.Contract.Misere {
 		return false
 	}
 	for _, seat := range s.Defenders {
