@@ -354,6 +354,10 @@ function role(v: View, i: number): string {
         : t("web.main.text247");
   if (v.declarer === i) return contract(v.contract || v.bid);
   if (v.contract?.misere) return v.defence?.[i] === 2 ? t("web.main.text236") : v.defence?.[i] === 1 ? t("web.main.text235") : t("web.main.text246");
+  if (v.stage === "play" && v.trickNo === 0 && !v.trick?.length && v.defence?.[i] === 2 &&
+      v.defence.filter(choice => choice === 2).length === 1 && !v.dealerWhist) {
+    return v.open ? t("web.main.text233") : t("web.main.text232");
+  }
   if(v.halfSeat===i)return halfLabel(v);
   return (
     ({ 1: t("web.main.text206"), 2: t("web.main.text237"), 3: halfLabel(v) } as Record<number, string>)[

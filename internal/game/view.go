@@ -86,7 +86,8 @@ func (s *State) View(seat int) View {
 	v.Rules = s.Agreements()
 	v.Deadline = s.Deadline
 	v.StartedAt = s.StartedAt
-	if s.Contract != nil && s.Contract.Misere && s.isCatcher(seat) && (s.Stage == "play" || s.Stage == "trick") {
+	misereTrackerViewer := s.isCatcher(seat) || len(s.Players) == 4 && seat == s.Dealer
+	if s.Contract != nil && s.Contract.Misere && misereTrackerViewer && (s.Stage == "play" || s.Stage == "trick") {
 		v.MisereCards = append([]Card{}, s.MisereCards...)
 		// Upgrade the first tracker format in existing no-talon misere saves.
 		if s.Contract.NoTalon && len(v.MisereCards) == 10 {

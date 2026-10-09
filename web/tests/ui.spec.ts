@@ -273,6 +273,53 @@ test('dealer can inspect one defender and then only whist or pass',async({page})
   expect(commands).toEqual(['dealer-first','whist']);
 });
 
+test('defence decisions and the selected open or closed mode are visible to everyone',async({page})=>{
+  await page.request.post(new URL('/api',url).href,{headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},data:{action:'create',players:3,target:30,name:'Игрок',bots:true}});
+  let phase:'defend'|'play'='defend';
+  let revision=100;
+  let open=true;
+  let level=6;
+  let trick:any[]=[];
+  let defence=[0,2,1];
+  let viewer=0;
+  await page.route('**/api',async route=>{
+    if(route.request().postDataJSON().action!=='status')return route.fallback();
+    const response=await route.fetch(),body=await response.json(),v=body.data.view;
+    Object.assign(v,{stage:phase,revision:revision++,seat:viewer,actor:0,turn:0,dealer:1,declarer:0,contract:{level,suit:1},bid:{level,suit:1},defence,halfSeat:defence[2]===3?2:-1,trick,trickNo:0,open,actions:[],hand:[],taken:[0,0,0],players:v.players.map((p:any,i:number)=>({...p,name:['Играющий','Первый вистующий','Второй защитник'][i],count:10,cards:[]}))});
+    await route.fulfill({response,json:body});
+  });
+  await page.goto(url);
+  await page.locator('.topbar [data-language-picker]').selectOption('ru');
+  await expect(page.locator('.player-left .speech')).toHaveText('Вист');
+  await expect(page.locator('.player-right .speech')).toHaveText('Пас');
+
+  // The half-whist label is shared with every viewer and follows the contract level.
+  defence=[0,2,3];
+  level=6;
+  await expect(page.locator('.player-right .speech')).toHaveText('свои (2)');
+  level=7;
+  await expect(page.locator('.player-right .speech')).toHaveText('своя (1)');
+  defence=[0,2,1];
+  for(viewer=0;viewer<3;viewer++) {
+    await page.reload();
+    await expect(page.locator('body')).toContainText('Вист');
+    await expect(page.locator('body')).toContainText('Пас');
+  }
+
+  phase='play';
+  viewer=0;
+  level=7;
+  open=true;
+  await page.reload();
+  await expect(page.locator('.player-left .speech')).toHaveText('Всветлую');
+  open=false;
+  await page.reload();
+  await expect(page.locator('.player-left .speech')).toHaveText('Втёмную');
+  trick=[{seat:0,card:0}];
+  await page.reload();
+  await expect(page.locator('.player-left .speech')).toHaveText('Вист');
+});
+
 for (const count of [3,4]) {
   test(`pool whist columns keep their owners for every viewer with ${count} seats`,async({page})=>{
     await page.request.post(new URL('/api',url).href,{headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},data:{action:'create',players:count,target:30,name:'Player 0',bots:true}});

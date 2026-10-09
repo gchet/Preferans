@@ -46,8 +46,11 @@ func TestMisereTrackerDoesNotRevealDiscard(t *testing.T) {
 			if len(s.View(s.Declarer).MisereCards) != 0 {
 				t.Fatal("tracker shown to declarer")
 			}
-			if n == 4 && len(s.View(s.Dealer).MisereCards) != 0 {
-				t.Fatal("tracker shown to dealer")
+			if n == 4 {
+				dealerView := s.View(s.Dealer)
+				if !reflect.DeepEqual(dealerView.MisereCards, original) || len(dealerView.MiserePlayed) != 0 {
+					t.Fatal("four-player dealer should see the complete misere tracker")
+				}
 			}
 			for s.Stage == "play" {
 				c := BotCommand(s.View(s.Actor()))
