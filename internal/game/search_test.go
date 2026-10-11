@@ -244,3 +244,58 @@ func TestSearchSamplingFourMissingSuitCards(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchLeadsAceWhenOrderDoesNotMatter(t *testing.T) {
+	// The contract is already made and nobody can beat either spade: Ace-then-7
+	// and 7-then-Ace both take two tricks. Equal moves must not default to the
+	// lowest card when leading.
+	contract := Contract{Level: 6, Suit: 4}
+	v := View{Seat: 0, Actor: 0, Turn: 0, Dealer: 2, Declarer: 0, Stage: "play", TrickNo: 8, Contract: &contract,
+		Rules: DefaultRules(), Hand: []Card{0, 7}, PlayHand: []Card{0, 7}, Legal: []Card{0, 7}, Actions: []string{"play"},
+		Taken: []int{6, 1, 1}, Defence: []int{0, 2, 2}, HalfSeat: -1,
+		Players: []SeatView{{Count: 2, Cards: []Card{0, 7}}, {Count: 2, Cards: []Card{8, 9}}, {Count: 2, Cards: []Card{16, 17}}}}
+	situation := BotSituation{View: v, KnownDiscard: []Card{1, 2}}
+	used := cardMask([]Card{0, 7, 8, 9, 16, 17, 1, 2})
+	var played []Play
+	for card := Card(0); card < 32; card++ {
+		if used&(uint32(1)<<card) == 0 {
+			played = append(played, Play{Seat: len(played) % 3, Card: card})
+		}
+	}
+	for i := 0; i < len(played); i += 3 {
+		situation.PlayedTricks = append(situation.PlayedTricks, played[i:i+3])
+	}
+	if BotCommand(v).Cards[0] != 0 {
+		t.Fatal("baseline no longer demonstrates leading the seven")
+	}
+	command, stats := SearchBotCommand(context.Background(), situation, SearchOptions{Samples: 1, ExactCards: 6, Seed: 1})
+	if stats.Samples != 1 || len(command.Cards) != 1 || command.Cards[0] != 7 {
+		t.Fatalf("did not lead the ace: %+v %+v", command, stats)
+	}
+}
+
+func TestReduceMovesCollapsesOnlyTouchingCards(t *testing.T) {
+	// Mover holds 8,9,Q of suit 0 (ranks 1,2,5); an opponent holds the 10 (rank 3).
+	p := searchPosition{active: [3]int{0, 1, 2}}
+	p.hands[0] = uint32(1)<<1 | uint32(1)<<2 | uint32(1)<<5
+	p.hands[1] = uint32(1) << 3
+	var rep [32]Card
+	for card := range rep {
+		rep[card] = Card(card)
+	}
+	kept := p.reduceMoves(p.hands[0], &rep)
+	if kept != uint32(1)<<1|uint32(1)<<5 || rep[2] != 1 {
+		t.Fatalf("kept %b rep %d", kept, rep[2])
+	}
+	// With nothing between 8 and 10 they are interchangeable...
+	q := searchPosition{active: [3]int{0, 1, 2}}
+	q.hands[0] = uint32(1)<<1 | uint32(1)<<3
+	if kept := q.reduceMoves(q.hands[0], nil); kept != uint32(1)<<1 {
+		t.Fatalf("touching cards not collapsed: %b", kept)
+	}
+	// ...but a 9 already in the current trick separates them.
+	q.trick[0], q.trickLen = Play{Seat: 1, Card: 2}, 1
+	if kept := q.reduceMoves(q.hands[0], nil); kept != q.hands[0] {
+		t.Fatalf("trick card did not separate: %b", kept)
+	}
+}

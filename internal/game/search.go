@@ -52,21 +52,35 @@ func SearchBotCommand(ctx context.Context, situation BotSituation, options Searc
 		if !valid {
 			break
 		}
+		legal := position.legal()
+		// Touching cards that no hand can separate give identical outcomes in this
+		// sampled deal, so only one of them is searched and the value is shared.
+		var rep [32]Card
+		for card := range rep {
+			rep[card] = Card(card)
+		}
+		position.reduceMoves(legal, &rep)
 		values := make([]float64, len(v.Legal))
+		var known [32]float64
+		var done [32]bool
 		complete := true
 		for i, card := range v.Legal {
-			p := position
-			if p.legal()&(uint32(1)<<card) == 0 {
+			if legal&(uint32(1)<<card) == 0 {
 				complete = false
 				break
 			}
-			p.play(card)
-			result, valid := search.rollout(p)
-			if !valid {
-				complete = false
-				break
+			r := rep[card]
+			if !done[r] {
+				p := position
+				p.play(r)
+				result, valid := search.rollout(p)
+				if !valid {
+					complete = false
+					break
+				}
+				known[r], done[r] = search.objective(result, v.Seat), true
 			}
-			values[i] = search.objective(result, v.Seat)
+			values[i] = known[r]
 		}
 		if !complete {
 			break
@@ -77,10 +91,16 @@ func SearchBotCommand(ctx context.Context, situation BotSituation, options Searc
 		stats.Samples++
 	}
 	if stats.Samples > 0 {
+		leading := len(v.Trick) == 0
 		best := 0
 		for i := 1; i < len(totals); i++ {
-			if totals[i] > totals[best]+1e-9 || (math.Abs(totals[i]-totals[best]) < 1e-9 && v.Legal[i].Rank() < v.Legal[best].Rank()) {
+			if totals[i] > totals[best]+1e-9 {
 				best = i
+			} else if math.Abs(totals[i]-totals[best]) < 1e-9 {
+				// Equal value: lead the top of a sequence, otherwise play low.
+				if (leading && v.Legal[i].Rank() > v.Legal[best].Rank()) || (!leading && v.Legal[i].Rank() < v.Legal[best].Rank()) {
+					best = i
+				}
 			}
 		}
 		command.Cards = []Card{v.Legal[best]}
@@ -190,6 +210,7 @@ type searchEngine struct {
 	rng     *rand.Rand
 	view    View
 	nodes   int
+	cache   map[uint32][4]float64
 }
 
 func (e *searchEngine) objective(scores [4]float64, seat int) float64 {
@@ -236,9 +257,9 @@ func (e *searchEngine) exact(p searchPosition) ([4]float64, bool) {
 		return [4]float64{}, false
 	}
 	if p.trickNo == 10 {
-		return e.terminal(p), true
+		return e.leaf(p), true
 	}
-	moves := p.legal()
+	moves := p.reduceMoves(p.legal(), nil)
 	best := math.Inf(-1)
 	var chosen [4]float64
 	for moves != 0 {
@@ -273,7 +294,7 @@ func (e *searchEngine) rollout(p searchPosition) ([4]float64, bool) {
 		card := p.rolloutCard(moves, e.rng)
 		p.play(card)
 	}
-	return e.terminal(p), true
+	return e.leaf(p), true
 }
 func (p *searchPosition) rolloutCard(moves uint32, rng *rand.Rand) Card {
 	best := Card(bits.TrailingZeros32(moves))
@@ -321,4 +342,79 @@ func (p *searchPosition) rolloutCard(moves uint32, rng *rand.Rand) Card {
 		}
 	}
 	return best
+}
+
+// trickBias breaks ties between equal real scores in favour of safer positions:
+// the declarer prefers overtricks (a margin against sampling error) and, on a
+// misere, fewer tricks. It is far smaller than any real score difference.
+const trickBias = 0.01
+
+// leaf is terminal() with a tie-breaking margin, memoised by the tricks taken:
+// the real scorer only depends on them and is expensive to run per leaf.
+func (e *searchEngine) leaf(p searchPosition) [4]float64 {
+	key := uint32(p.taken[0]) | uint32(p.taken[1])<<4 | uint32(p.taken[2])<<8 | uint32(p.taken[3])<<12
+	if result, ok := e.cache[key]; ok {
+		return result
+	}
+	result := e.terminal(p)
+	if !p.allPass {
+		if p.contract.Misere {
+			result[p.declarer] -= trickBias * float64(p.taken[p.declarer])
+		} else {
+			for _, seat := range p.active {
+				result[seat] += trickBias * float64(p.taken[seat])
+			}
+		}
+	}
+	if e.cache == nil {
+		e.cache = map[uint32][4]float64{}
+	}
+	e.cache[key] = result
+	return result
+}
+
+// reduceMoves drops legal cards that are interchangeable with a lower legal card:
+// two cards of one suit held by the mover with no other remaining card (in any
+// hand or in the current trick) ranked between them always lead to the same
+// result. rep, when given, maps every dropped card to the card kept instead.
+func (p *searchPosition) reduceMoves(moves uint32, rep *[32]Card) uint32 {
+	all := p.hands[p.active[0]] | p.hands[p.active[1]] | p.hands[p.active[2]]
+	for i := 0; i < p.trickLen; i++ {
+		all |= uint32(1) << p.trick[i].Card
+	}
+	if p.allPass && p.trickNo < 2 {
+		all |= uint32(1)<<p.talon[0] | uint32(1)<<p.talon[1]
+	}
+	kept := moves
+	for suit := 0; suit < 4; suit++ {
+		shift := uint(8 * suit)
+		mine := (moves >> shift) & 255
+		if mine == 0 {
+			continue
+		}
+		remaining := ((all >> shift) & 255) | mine
+		prevMine := false
+		anchor := Card(0)
+		for rank := 0; rank < 8; rank++ {
+			bit := uint32(1) << uint(rank)
+			if remaining&bit == 0 {
+				continue
+			}
+			card := Card(suit*8 + rank)
+			if mine&bit == 0 {
+				prevMine = false
+				continue
+			}
+			if prevMine {
+				kept &^= uint32(1) << uint(card)
+				if rep != nil {
+					rep[card] = anchor
+				}
+			} else {
+				anchor = card
+			}
+			prevMine = true
+		}
+	}
+	return kept
 }
