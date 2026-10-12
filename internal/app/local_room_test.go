@@ -250,3 +250,63 @@ func TestCompletedExitDoesNotWaitForSlowServer(t *testing.T) {
 	a.Close()
 	server.Close()
 }
+
+func TestUnfinishedExitSucceedsWhenServerIsUnreachable(t *testing.T) {
+	// Leaving a table with bots must not depend on the room server: with no network
+	// the exit used to fail with the server error and the player was stuck.
+	store, err := rooms.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offline atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if offline.Load() {
+			http.Error(w, "offline", 503)
+			return
+		}
+		store.ServeHTTP(w, r)
+	}))
+	defer server.Close()
+	t.Setenv("PREFERANS_ROOMS_URL", server.URL)
+	a := New(t.TempDir())
+	defer a.Close()
+	room, err := a.RoomDirectory("create", "", "Exit test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = a.EnterRoom(room.Room.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.roomTable("", 3, 10, "Host", true); err != nil {
+		t.Fatal(err)
+	}
+	offline.Store(true)
+	if err = a.RoomLeaveTable(); err != nil {
+		t.Fatalf("exit failed without a server: %v", err)
+	}
+	if a.Status().Current {
+		t.Fatal("UI remains on the table")
+	}
+	a.mu.Lock()
+	queued := len(a.rooms.config.PendingCloses)
+	a.mu.Unlock()
+	if queued != 1 {
+		t.Fatalf("close was not queued: %d", queued)
+	}
+	waitRoom(t, func() bool { a.mu.Lock(); defer a.mu.Unlock(); return !a.rooms.closing })
+	offline.Store(false)
+	a.mu.Lock()
+	a.rooms.nextClose = time.Time{}
+	a.mu.Unlock()
+	a.retryRoomCloses()
+	a.mu.Lock()
+	queued = len(a.rooms.config.PendingCloses)
+	a.mu.Unlock()
+	if queued != 0 {
+		t.Fatal("queued close was not retried after the server returned")
+	}
+	out, err := a.roomRequest(rooms.Request{Op: "poll", Room: room.Room.ID})
+	if err != nil || out.Room.Table != nil {
+		t.Fatal("table stayed open on the server")
+	}
+}

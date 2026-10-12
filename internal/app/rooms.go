@@ -330,14 +330,17 @@ func (a *App) RoomLeaveTable() error {
 	a.rooms.busy = true
 	a.mu.Unlock()
 	defer func() { a.mu.Lock(); a.rooms.busy = false; a.mu.Unlock() }()
+	closeFailed := false
 	if r != nil && host && r.ID != localRoomID && !finished {
+		// Leaving must not depend on the server: when it is unreachable (no network,
+		// DNS failure, timeout) or refuses, the close is queued and retried later.
 		if _, e := a.roomRequest(rooms.Request{Op: "close", Room: r.ID, TableID: table}); e != nil {
-			return e
+			closeFailed = true
 		}
 	}
 	a.mu.Lock()
 	previous := a.rooms.config
-	if finished && host && closingRoom != "" && closingRoom != localRoomID {
+	if (finished || closeFailed) && host && closingRoom != "" && closingRoom != localRoomID {
 		a.rooms.config.PendingCloses = append(append([]roomClose(nil), a.rooms.config.PendingCloses...), roomClose{Room: closingRoom, Table: table})
 	}
 	a.rooms.config.Table = ""
@@ -361,7 +364,7 @@ func (a *App) RoomLeaveTable() error {
 		a.updateLocalRoomLocked()
 	}
 	a.mu.Unlock()
-	if finished {
+	if finished || closeFailed {
 		go a.retryRoomCloses()
 	}
 	return nil
