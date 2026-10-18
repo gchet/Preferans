@@ -33,7 +33,7 @@ function Check { if ($LASTEXITCODE -ne 0) { throw "Команда заверши
 New-Item -ItemType Directory -Force .build,dist | Out-Null
 if (!$SkipWeb -and $Target -in @('All','Web','Windows','Android')) {
     Push-Location web
-    try { & npm.cmd ci; Check; & npm.cmd run build; Check } finally { Pop-Location }
+    try { $env:PREFERANS_VERSION = $VersionName; & npm.cmd ci; Check; & npm.cmd run build; Check } finally { Remove-Item Env:PREFERANS_VERSION -ErrorAction SilentlyContinue; Pop-Location }
 }
 if ($Target -in @('All','Test')) {
     & go test ./internal/...; Check

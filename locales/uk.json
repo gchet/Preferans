@@ -887,5 +887,6 @@
   "web.bot.name": "Бот {p0}",
   "web.connection.room_service": "Сервер кімнат",
   "web.connection.server_required": "Укажіть адресу власного сервера підключення",
-  "go.connection.service_busy": "Перед зміною сервера завершіть партію та вийдіть із кімнати."
+  "go.connection.service_busy": "Перед зміною сервера завершіть партію та вийдіть із кімнати.",
+  "web.about.line": "Преферанс {p0} · © 2026 gchet · MIT"
 }

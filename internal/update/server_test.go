@@ -2,10 +2,10 @@ package update
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -22,10 +22,13 @@ func TestServerServesManifestAndAPKOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	addr := s.Addr()
-	addr = strings.Replace(addr, "0.0.0.0", "127.0.0.1", 1)
+	_, port, err := net.SplitHostPort(s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := net.JoinHostPort("127.0.0.1", port)
 
-	// The test server uses a fixed port only to keep the public API small.
+	// Dial loopback instead of the wildcard address returned by the listener.
 	for _, path := range []string{"/version.json", "/Preferans.apk", "/secret.txt"} {
 		resp, err := http.Get("http://" + addr + path)
 		if err != nil {

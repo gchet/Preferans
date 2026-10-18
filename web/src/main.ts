@@ -878,6 +878,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
     $("#settings-game").insertAdjacentHTML("afterbegin", `<label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label>`);
     $('#settings-game').insertAdjacentHTML('afterbegin',`<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label>`);
     previewDeck();
+    $("#panel-body").insertAdjacentHTML("beforeend", `<p class="about-line">${esc(t("web.about.line", {p0: typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__}))}</p>`);
   }
   if (kind === "network")
     $("#panel-body").innerHTML =

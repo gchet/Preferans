@@ -15,3 +15,5 @@ interface Window {
     installUpdate(url: string): void;
   };
 }
+
+declare const __APP_VERSION__: string;
