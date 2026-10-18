@@ -1,6 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {spawn} from 'node:child_process';
 import {resolve} from 'node:path';
+import { startGame } from './helpers';
 
 test('public build starts without personal servers and can play offline', async ({page}) => {
   const root=resolve('..');
@@ -28,7 +29,7 @@ test('public build starts without personal servers and can play offline', async 
     await page.getByRole('button',{name:'Создать стол →'}).click();
     await expect(page.locator('.center.lobby')).toBeVisible();
     await page.getByRole('button',{name:'Готов',exact:true}).click();
-    await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+    await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
     await expect(page.locator('.hand .card')).toHaveCount(10);
     await page.locator('#finish-party-topbar').click();
     await expect(page.locator('#create-form')).toBeVisible();

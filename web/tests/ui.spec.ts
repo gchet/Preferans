@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { startGame } from './helpers';
 let processHandle: ChildProcess;
 let url: string;
 
@@ -34,7 +35,7 @@ test('rooms: local language selection persists across screens without changing t
   await page.getByRole('button',{name:'Create table →',exact:true}).click();
   await expect(page.locator('.playing-field')).toContainText('Bot 2');
   await page.getByRole('button',{name:'Ready',exact:true}).click();
-  await page.getByRole('button',{name:'Start game',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Start game',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   const response=await page.request.post(new URL('/api',url).href,{headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},data:{action:'status'}});
   const id=(await response.json()).data.view.id;
@@ -65,7 +66,7 @@ test('rooms: local language selection persists across screens without changing t
   await page.getByRole('button',{name:'Create table →',exact:true}).click();
   await expect(page.locator('.center.lobby')).toBeVisible();
   await page.getByRole('button',{name:'Ready',exact:true}).click();
-  await page.getByRole('button',{name:'Start game',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Start game',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   await page.getByRole('button',{name:'Rules',exact:true}).click();
   await expect(page.locator('#panel')).toContainText('Table agreements');
@@ -125,7 +126,7 @@ test('debug discard marks two hand cards then opens the normal contract grid',as
   await page.getByLabel('Боты для отладки').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="pass"]').click();
   await expect(page.locator('.player[data-debug-waiting="1"]')).toBeVisible();
   const rpc=async(action:string,params:Record<string,unknown>={})=>{
@@ -178,7 +179,7 @@ for(const gesture of ['right-click','long-press'])test(`debug bot turn accepts $
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('[data-action="pass"]').click();
@@ -568,7 +569,7 @@ test('debug preference gates bot tools and inspection toggles a shared pause',as
   await page.reload();
   await expect(page.locator('[data-panel="debug-bots"]')).toBeVisible();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   const bot=page.locator('.bot-model-icon[data-debug-inspect="1"]');
   await bot.click();
   await expect(bot).toHaveAttribute('aria-pressed','true');
@@ -821,7 +822,7 @@ test('pause resume button is visible only to its owner', async ({page})=>{
   await page.locator('#create-form [name=bots]').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.locator('[data-action=ready]').click();
-  await page.locator('[data-action=start]').click();
+  await startGame(page, page.locator('[data-action=start]'));
   await page.locator('#pause-game').click();
   let owner=1;
   await page.route('**/api',async route=>{
@@ -860,7 +861,7 @@ for (const n of [3,4]) test('table preferences and shared pause clock survive re
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.locator('[data-action="ready"]').click();
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
-  await page.locator('[data-action="start"]').click();
+  await startGame(page, page.locator('[data-action="start"]'));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('#pause-game').click();
@@ -1523,7 +1524,7 @@ test('table agreements save before creation and freeze on start', async ({page})
   await page.getByRole('button',{name:'Сохранить',exact:true}).click();
   await expect(page.getByRole('button',{name:'Готов',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await expect(page.locator('#table-progress')).toContainText('Время');
   await expect(page.locator('.pool-total')).toHaveText('45');
   await expect(page.locator('.table-announcement .dealer-hand .card-back')).toHaveCount(2);
@@ -1590,7 +1591,7 @@ test('reference open hands form vertical columns and score stays in sectors', as
   await page.getByLabel('Боты для отладки').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   // A fixed view fixture tests rendering independently of random deals and bot choices.
   await page.route('**/api', async route => {
@@ -1648,7 +1649,7 @@ for (const [mode,label] of [['pass','Распасы'],['misere','Мизер']]) 
   await expect(page.locator('[data-panel="debug-bots"]')).toContainText(label);
   await page.getByRole('button',{name:'Готов',exact:true}).click();
   await expect(page.locator('[data-panel="debug-bots"]')).toHaveCount(0);
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="pass"]').click();
   if (mode==='misere') {
     // Step the debug preset through bot bidding, discard and catcher selection.
@@ -1842,7 +1843,7 @@ test('four player talon toggle skips manual discard without scrolling', async ({
   await page.getByLabel('Боты для отладки').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="bid"]').click();
   await page.getByRole('button',{name:'8 без козыря',exact:true}).click();
   const toggle = page.getByRole('button',{name:'Прикуп в морду',exact:true});
@@ -1881,7 +1882,7 @@ for (const players of [3,4]) test(`reference settings, contract grid and reversi
   await page.getByLabel('Боты для отладки').check();
   await page.getByRole('button',{name:'Создать стол →'}).click();
   await page.getByRole('button',{name:'Готов',exact:true}).click();
-  await page.getByRole('button',{name:'Начать партию',exact:true}).click();
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="bid"]').click();
   await expect(page.locator('.contract-cell')).toHaveCount(25);
   await page.screenshot({path:'../.build/reference-contract.png'});
@@ -1985,9 +1986,7 @@ test("create, trade, play, score and responsive layout", async ({ page }) => {
   await page.getByRole("button", { name: "Создать стол →" }).click();
   await expect(page.getByRole("heading", { name: "Ваш стол" })).toBeVisible();
   await page.getByRole("button", { name: "Готов", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Начать партию", exact: true })
-    .click();
+  await startGame(page, page.getByRole("button", { name: "Начать партию", exact: true }));
   await expect(page.locator('[data-action="bid"]')).toBeVisible();
   await expect(page.locator(".pool-drawing")).toBeVisible();
   await page.locator(".pool-drawing").click();
@@ -2155,9 +2154,7 @@ test("four seats around the score sheet", async ({ page }) => {
   await page.getByLabel("Боты для отладки").check();
   await page.getByRole("button", { name: "Создать стол →" }).click();
   await page.getByRole("button", { name: "Готов", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Начать партию", exact: true })
-    .click();
+  await startGame(page, page.getByRole("button", { name: "Начать партию", exact: true }));
   await expect(page.locator(".pool-drawing")).toBeVisible();
   await expect(page.locator(".pool-drawing .pool-name")).toHaveCount(5);
   for (const width of [1440, 1024]) {
