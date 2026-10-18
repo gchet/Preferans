@@ -1619,6 +1619,8 @@ test('reference open hands form vertical columns and score stays in sectors', as
   for (const [width,height] of [[1440,900],[1000,600],[844,390],[390,844]]) {
     await page.setViewportSize({width,height});
     await expect.poll(()=>page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual({width,height});
+    // fitCardFans runs on the next frame after resize; wait for the fitted layout before measuring.
+    await expect.poll(()=>page.evaluate(h=>Array.from(document.querySelectorAll('.exposed')).every(e=>Array.from(e.children).every(g=>g.getBoundingClientRect().bottom<=h)),height),{timeout:5000}).toBeTruthy();
     const columns = await page.locator('.exposed').evaluateAll(es=>es.map(e=>Array.from(e.children).map(g=>{
       const r=g.getBoundingClientRect(); return {x:r.x,y:r.y,bottom:r.bottom};
     })));
