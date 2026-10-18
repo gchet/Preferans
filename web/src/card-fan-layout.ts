@@ -12,7 +12,7 @@ export function fitCardFans() {
     const four = !!field.querySelector('.player-top');
     const sideHeight = four ? c.sideHeightScaleFour : c.sideHeightScaleThree;
     const step = Math.max(c.cardStairMinPx, Math.min(innerWidth * c.cardStairViewportRatio, c.cardStairMaxPx));
-    const tray = document.querySelector<HTMLElement>('.discard-tray');
+    const tray = document.querySelector<HTMLElement>('.discard-tray, .discard-tray-spacer');
     const reserved = (tray?.getBoundingClientRect().height || 0) + (tray ? c.discardGapPx : 0);
     // Reserve four suit rows, six stair steps and three gaps for every deal.
     // The bottom hand needs 1.12h. Measure chrome instead of assuming its size.
