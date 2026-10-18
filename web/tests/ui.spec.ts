@@ -3,7 +3,7 @@ import { spawn, ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import { startGame } from './helpers';
+import { clickIdle, startGame, selectLanguage } from './helpers';
 let processHandle: ChildProcess;
 let url: string;
 
@@ -32,9 +32,9 @@ test('rooms: local language selection persists across screens without changing t
   await page.locator('#create-form [name="name"]').fill('Гена');
   await page.locator('#create-form [name="players"]').selectOption('4');
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
-  await page.getByRole('button',{name:'Create table →',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Create table →',exact:true}));
   await expect(page.locator('.playing-field')).toContainText('Bot 2');
-  await page.getByRole('button',{name:'Ready',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Ready',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Start game',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   const response=await page.request.post(new URL('/api',url).href,{headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},data:{action:'status'}});
@@ -47,8 +47,7 @@ test('rooms: local language selection persists across screens without changing t
   for(const size of [{width:1024,height:600},{width:848,height:360}]) {
     await page.setViewportSize(size);
     for(const lang of ['en','uk','ru']) {
-      await picker.selectOption(lang);
-      await expect(page.locator('html')).toHaveAttribute('lang',lang);
+      await selectLanguage(page, picker, lang);
       await expect(page.locator('.hand .card')).toHaveCount(10);
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
       const visible=await picker.evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.bottom<=innerHeight;});
@@ -63,9 +62,9 @@ test('rooms: local language selection persists across screens without changing t
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await page.locator('#create-form [name="players"]').selectOption('3');
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
-  await page.getByRole('button',{name:'Create table →',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Create table →',exact:true}));
   await expect(page.locator('.center.lobby')).toBeVisible();
-  await page.getByRole('button',{name:'Ready',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Ready',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Start game',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   await page.getByRole('button',{name:'Rules',exact:true}).click();
@@ -100,10 +99,10 @@ test.describe('local offline interface',()=>{
       // viewport can be scaled independently, so wait for layout dimensions.
       await expect.poll(()=>page.evaluate(()=>({width:innerWidth,height:innerHeight}))).toEqual(size);
       await page.evaluate(()=>new Promise<void>(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done()))));
-      await page.getByRole('button',{name:'Создать стол →'}).tap();
+      await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}), 'tap');
       await expect(page.locator('.center.lobby')).toBeVisible();
-      await page.getByRole('button',{name:'Готов',exact:true}).tap();
-      await page.getByRole('button',{name:'Начать партию',exact:true}).tap();
+      await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}), 'tap');
+      await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}), 'tap');
       await expect(page.locator('.hand .card')).toHaveCount(10);
       await page.locator('#finish-party-topbar').tap();
       await expect(page.locator('#create-form')).toBeVisible();
@@ -124,8 +123,8 @@ test('debug discard marks two hand cards then opens the normal contract grid',as
   await page.locator('[name="debug-auction"]').check();
   await page.locator('#settings-form > button.primary').click();
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="pass"]').click();
   await expect(page.locator('.player[data-debug-waiting="1"]')).toBeVisible();
@@ -176,8 +175,8 @@ for(const gesture of ['right-click','long-press'])test(`debug bot turn accepts $
   await expect(page.locator('[name="debug-play"]')).not.toBeChecked();
   await page.locator('#settings-form > button.primary').click();
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
@@ -428,7 +427,7 @@ test("no-AI build hides model settings and blocks AI operations",async({page})=>
   await page.locator("#settings-form > button.primary").click();
   await expect(page.locator("#panel")).not.toBeVisible();
   await page.locator("#create-form [name=bots]").check();
-  await page.getByRole("button",{name:"Создать стол →"}).click();
+  await clickIdle(page, page.getByRole("button",{name:"Создать стол →"}));
   await expect(page.locator(".center.lobby")).toBeVisible();
   await expect(page.locator(".bot-model-icon")).toHaveCount(0);
   expect(aiRequests).toEqual([]);
@@ -465,7 +464,7 @@ test("no-talon continuation has one generic nine and a separate suit declaration
   });
   await page.goto(url);
   await page.locator("#create-form [name= bots]").check();
-  await page.getByRole("button",{name:"Создать стол →"}).click();
+  await clickIdle(page, page.getByRole("button",{name:"Создать стол →"}));
   await expect(page.locator(".center.lobby")).toBeVisible();
   phase=1;
   await page.getByRole("button",{name:"Ставка",exact:true}).click();
@@ -515,7 +514,7 @@ test('AI review settings persist and dialogue holds the decision until Continue'
   await expect(page.locator('[data-ai-language]')).toHaveValue('en');
   await page.keyboard.press('Escape');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let review:any={id:'review-test',seat:1,bot:'Бот 1 qwen',phase:'play',language:'en',summary:'Ход: 7♠',why:'Сохраняю старшие карты',model:{alias:'qwen',model:'test',maxTokens:500,temperature:0},elapsedMs:1500,promptTokens:200,completionTokens:30,chat:[],questionBusy:false,exchanges:[{phase:'play',systemRU:'Тестовая русская версия промпта',messages:[{role:'system',content:'Test system English'},{role:'user',content:'{"legal_actions":[{"move":0}]}'}],response:'{"choices":[{"message":{"content":"{\"move\":0,\"why\":\"Сохраняю старшие карты\"}"}}]}'}]};
   let continued=0;
@@ -556,7 +555,7 @@ test('debug preference gates bot tools and inspection toggles a shared pause',as
   await expect(page.locator('[name="debug-play"]')).not.toBeChecked();
   await page.keyboard.press('Escape');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   await expect(page.locator('[data-panel="debug-bots"]')).toHaveCount(0);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
@@ -568,7 +567,7 @@ test('debug preference gates bot tools and inspection toggles a shared pause',as
   await expect(page.locator('[data-panel="debug-bots"]')).toBeVisible();
   await page.reload();
   await expect(page.locator('[data-panel="debug-bots"]')).toBeVisible();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   const bot=page.locator('.bot-model-icon[data-debug-inspect="1"]');
   await bot.click();
@@ -634,7 +633,7 @@ test('AI models and encrypted keys persist and can be assigned to individual bot
   await expect(page.locator('#ai-key-value')).toHaveValue('');
   await page.locator('#settings-form > button.primary').click();
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.table-heading [data-panel="bot-models"]')).toHaveCount(0);
   await page.locator('.bot-model-icon[data-bot-seat="1"]').click();
   await expect(page.locator('#bot-models select')).toHaveCount(1);
@@ -669,7 +668,7 @@ for (const [n,dealer] of [[3,2],[4,2],[4,1],[4,3]]) test(`misere tracker retains
   await page.goto(url);
   await page.locator('[name="players"]').selectOption(String(n));
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let played:number[]=[];
   await page.route('**/api',async route=>{
@@ -721,7 +720,7 @@ for (const [n,dealer] of [[3,2],[4,2],[4,1],[4,3]]) test(`misere tracker retains
 test('Here button repeats the offered bid and hides when repetition is unavailable',async({page})=>{
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let allowed=true,submitted:any=null;
   const bid={level:7,suit:2,misere:false};
@@ -752,7 +751,7 @@ test('Here button repeats the offered bid and hides when repetition is unavailab
 test('all-pass history shows net penalties after cancelling current tricks',async({page})=>{
   await page.goto(url);
   await page.locator('#create-form [name=bots]').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   await page.route('**/api',async route=>{
     const q=route.request().postDataJSON();
@@ -820,8 +819,8 @@ test('Android log settings show disk size, export full file and clear it',async(
 test('pause resume button is visible only to its owner', async ({page})=>{
   await page.goto(url);
   await page.locator('#create-form [name=bots]').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.locator('[data-action=ready]').click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.locator('[data-action=ready]'));
   await startGame(page, page.locator('[data-action=start]'));
   await page.locator('#pause-game').click();
   let owner=1;
@@ -858,8 +857,8 @@ for (const n of [3,4]) test('table preferences and shared pause clock survive re
   await page.locator('[name="players"]').selectOption(String(n));
   await page.locator('[name="name"]').fill('Пауза-тест');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.locator('[data-action="ready"]').click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.locator('[data-action="ready"]'));
   await expect(page.locator('body')).not.toHaveClass(/\bbusy\b/);
   await startGame(page, page.locator('[data-action="start"]'));
   await expect(page.locator('.hand .card')).toHaveCount(10);
@@ -881,7 +880,7 @@ for (const n of [3,4]) test('table preferences and shared pause clock survive re
 test('finished result stays visible and history opens without joining',async({page})=>{
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let finalView:any=null, exited=false;
   await page.route('**/api',async route=>{
@@ -946,7 +945,7 @@ test('controlled upper hand accepts dragging across the card face',async({page})
   await page.goto(url);
   await page.locator('[name="players"]').selectOption('4');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   await page.route('**/api',async route=>{
     const response=await route.fetch(),body=await response.json();
@@ -1113,7 +1112,7 @@ test('dealer backs match settings and solo bots have no microphone', async ({pag
   await expect(page.locator('.topbar [data-exit-app] svg')).toBeVisible();
   await page.locator('[name="players"]').selectOption('4');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button', {name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button', {name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   await expect(page.locator('#app .voice-mic')).toHaveCount(0);
   let back = 'plaid', humanGuest = false;
@@ -1161,7 +1160,7 @@ for (const shell of ['windows', 'android']) {
     await expect.poll(() => page.evaluate(() => (window as any).exitCalls)).toBe(2);
     await page.locator('#close-panel').click();
     await page.locator('[name="bots"]').check();
-    await page.getByRole('button', {name:'Создать стол →'}).click();
+    await clickIdle(page, page.getByRole('button', {name:'Создать стол →'}));
     await expect(page.locator('body')).toHaveClass(/at-table/);
     await exit.click();
     await expect.poll(() => page.evaluate(() => (window as any).exitCalls)).toBe(3);
@@ -1316,7 +1315,7 @@ test('finish party is available before the first deal', async ({page}) => {
   await page.goto(url);
   await expect(page.locator('#finish-party-topbar')).toBeHidden();
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button', {name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button', {name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   await expect(page.locator('#finish-party-topbar')).toBeVisible();
   await expect(page.locator('#finish-party-topbar')).toHaveText('Завершить партию');
@@ -1329,7 +1328,7 @@ test('guest sees Exit on the table and in settings', async ({page}) => {
   await page.route('http://signaling.example.org:8080/**', route=>route.fulfill({json:{}}));
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   await page.route('**/api',async route=>{
     const response=await route.fetch(),body=await response.json();
@@ -1367,7 +1366,7 @@ for(const players of [3,4]) test(`edited SVG layout ${players} players uses equa
   await page.goto(url);
   await page.locator('[name="players"]').selectOption(String(players));
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let stage='auction', revision=980;
   await page.route('**/api',async route=>{
@@ -1441,7 +1440,7 @@ test('single whister drags cards from the passed hand at its seat', async ({page
   await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let played: number[] = [];
   await page.route('**/api', async route => {
@@ -1515,15 +1514,15 @@ test('table agreements save before creation and freeze on start', async ({page})
   await page.locator('#panel').screenshot({path:'../.build/rules-text.png'});
   await page.keyboard.press('Escape');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toContainText('Время 45 мин');
   await expect(page.locator('.center.lobby')).toContainText('распасы 1–2–4');
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await page.locator('[data-panel="settings"]').first().click();
   await page.locator('[name="rule-whist"]').selectOption('greedy');
   await page.getByRole('button',{name:'Сохранить',exact:true}).click();
   await expect(page.getByRole('button',{name:'Готов',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await expect(page.locator('#table-progress')).toContainText('Время');
   await expect(page.locator('.pool-total')).toHaveText('45');
@@ -1541,7 +1540,7 @@ test('table agreements save before creation and freeze on start', async ({page})
 test('round summary closes by timer, tap and cross; turn follows the played hand', async ({page}) => {
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let stage = 'round', round = 1, revision = 1000;
   await page.route('**/api', async route => {
@@ -1589,8 +1588,8 @@ test('reference open hands form vertical columns and score stays in sectors', as
   await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await expect(page.locator('.hand .card')).toHaveCount(10);
   // A fixed view fixture tests rendering independently of random deals and bot choices.
@@ -1643,11 +1642,11 @@ for (const [mode,label] of [['pass','Распасы'],['misere','Мизер']]) 
   await page.locator('#settings-form > button.primary').click();
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await page.locator('[data-panel="debug-bots"]').click();
   await page.locator(`[data-debug-bots="${mode}"]`).click();
   await expect(page.locator('[data-panel="debug-bots"]')).toContainText(label);
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await expect(page.locator('[data-panel="debug-bots"]')).toHaveCount(0);
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="pass"]').click();
@@ -1679,7 +1678,7 @@ test('three player pass talon stays separate from player trick cards', async ({p
   await page.route('http://signaling.example.org:8080/**', route=>route.fulfill({json:{}}));
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let trickNo=0;
   await page.route('**/api',async route=>{
@@ -1712,7 +1711,7 @@ test('four player pass talon keeps the second card at the dealer until its turn'
   await page.goto(url);
   await page.locator('[name="players"]').selectOption('4');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let trickNo=0, taken=0, collecting=false;
   await page.route('**/api',async route=>{
@@ -1752,7 +1751,7 @@ for (const rejected of [false,true]) test(`touch drop keeps card out of hand whi
   await page.route('http://signaling.example.org:8080/**',route=>route.fulfill({json:{}}));
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let played=false, received=false;
   let release!:()=>void;
@@ -1806,7 +1805,7 @@ for (const level of [7, 10]) test(`claim controls show all remaining results and
   await page.route('http://signaling.example.org:8080/**', route=>route.fulfill({json:{}}));
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let responder=false, pending=false, submitted=-1;
   await page.route('**/api', async route=>{
@@ -1841,8 +1840,8 @@ test('four player talon toggle skips manual discard without scrolling', async ({
   await page.goto(url);
   await page.locator('[name="players"]').selectOption('4');
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="bid"]').click();
   await page.getByRole('button',{name:'8 без козыря',exact:true}).click();
@@ -1880,8 +1879,8 @@ for (const players of [3,4]) test(`reference settings, contract grid and reversi
   await page.getByRole('button',{name:'Закрыть',exact:true}).click();
   await page.locator('[name="players"]').selectOption(String(players));
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
-  await page.getByRole('button',{name:'Готов',exact:true}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
   await page.locator('[data-action="bid"]').click();
   await expect(page.locator('.contract-cell')).toHaveCount(25);
@@ -1946,7 +1945,7 @@ for (const players of [3,4]) test(`reference settings, contract grid and reversi
 
 test("fill empty seats and manage saves from compact selector", async ({ page }) => {
   await page.goto(url);
-  await page.getByRole("button", { name: "Создать стол →" }).click();
+  await clickIdle(page, page.getByRole("button", { name: "Создать стол →" }));
   await expect(page.locator('[data-action="fill-bots"] svg')).toBeVisible();
   await expect(page.locator('[data-action="fill-bots"]')).toHaveText('');
   await page.getByRole("button", { name: "Заполнить свободные места ботами" }).click();
@@ -1983,9 +1982,9 @@ test("create, trade, play, score and responsive layout", async ({ page }) => {
   ).toBeVisible();
   await page.getByLabel("Ваше имя").fill("Тестовый игрок");
   await page.getByLabel("Боты для отладки").check();
-  await page.getByRole("button", { name: "Создать стол →" }).click();
+  await clickIdle(page, page.getByRole("button", { name: "Создать стол →" }));
   await expect(page.getByRole("heading", { name: "Ваш стол" })).toBeVisible();
-  await page.getByRole("button", { name: "Готов", exact: true }).click();
+  await clickIdle(page, page.getByRole("button", { name: "Готов", exact: true }));
   await startGame(page, page.getByRole("button", { name: "Начать партию", exact: true }));
   await expect(page.locator('[data-action="bid"]')).toBeVisible();
   await expect(page.locator(".pool-drawing")).toBeVisible();
@@ -2152,8 +2151,8 @@ test("four seats around the score sheet", async ({ page }) => {
   await page.goto(url);
   await page.locator('select[name="players"]').selectOption("4");
   await page.getByLabel("Боты для отладки").check();
-  await page.getByRole("button", { name: "Создать стол →" }).click();
-  await page.getByRole("button", { name: "Готов", exact: true }).click();
+  await clickIdle(page, page.getByRole("button", { name: "Создать стол →" }));
+  await clickIdle(page, page.getByRole("button", { name: "Готов", exact: true }));
   await startGame(page, page.getByRole("button", { name: "Начать партию", exact: true }));
   await expect(page.locator(".pool-drawing")).toBeVisible();
   await expect(page.locator(".pool-drawing .pool-name")).toHaveCount(5);
