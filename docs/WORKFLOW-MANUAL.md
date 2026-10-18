@@ -10,7 +10,7 @@
 
 ## Подготовка среды
 
-Откройте PowerShell 7 в корне проекта `J:\Projects\My\Preferans`. Нужны Git,
+Откройте PowerShell 7 в корне проекта `<корень-проекта>`. Нужны Git,
 GitHub CLI (`gh`), Go версии из `go.mod` (сейчас 1.27), Node.js/npm, Zig, Android
 SDK и NDK. Локальные пути инструментов хранятся в игнорируемом Git файле
 `project.local.json`; личные адреса сетевых служб и другие локальные значения не
@@ -21,10 +21,10 @@ SDK и NDK. Локальные пути инструментов хранятс�
 ~~~powershell
 gh auth status --hostname github.com
 gh repo view gchet/Preferans --json nameWithOwner,isPrivate,defaultBranchRef
-gh repo view GC-Preferans/Preferans --json nameWithOwner,isPrivate,defaultBranchRef
+gh repo view <владелец>/<приватный-репозиторий> --json nameWithOwner,isPrivate,defaultBranchRef
 ~~~
 
-Ожидается, что `gchet/Preferans` публичный, а `GC-Preferans/Preferans` приватный.
+Ожидается, что `gchet/Preferans` публичный, а `<владелец>/<приватный-репозиторий>` приватный.
 У аккаунта должны быть права записи в оба. Если команды не проходят, настройте
 доступ через `gh auth login` и не продолжайте публикацию до успешной проверки.
 
@@ -71,7 +71,7 @@ git diff
 
 ~~~powershell
 git tag --list 'v*' --sort=-version:refname
-gh release list --repo GC-Preferans/Preferans --limit 10
+gh release list --repo <владелец>/<приватный-репозиторий> --limit 10
 gh release list --repo gchet/Preferans --limit 10
 ~~~
 
@@ -195,13 +195,13 @@ pwsh ./build.ps1 -Target All
 Сначала выполните проверку готовности — она ничего не собирает и не публикует:
 
 ~~~powershell
-pwsh ./scripts/Publish-Release.ps1 -Repository GC-Preferans/Preferans -Tag v1.0.4 -CheckOnly
+pwsh ./scripts/Publish-Release.ps1 -Repository <владелец>/<приватный-репозиторий> -Tag v1.0.4 -CheckOnly
 ~~~
 
 Если проверка прошла, создайте приватный Release с заметками:
 
 ~~~powershell
-pwsh ./scripts/Publish-Release.ps1 -Repository GC-Preferans/Preferans -Tag v1.0.4 -Notes "Краткое описание изменений"
+pwsh ./scripts/Publish-Release.ps1 -Repository <владелец>/<приватный-репозиторий> -Tag v1.0.4 -Notes "Краткое описание изменений"
 ~~~
 
 По умолчанию издательский скрипт собирает с `-AI Off`. В релиз загружаются
@@ -220,7 +220,7 @@ pwsh ./scripts/Publish-Release.ps1 -Repository GC-Preferans/Preferans -Tag v1.0.
 Проверьте приватный Release и набор вложений:
 
 ~~~powershell
-gh release view v1.0.4 --repo GC-Preferans/Preferans
+gh release view v1.0.4 --repo <владелец>/<приватный-репозиторий>
 Get-Content dist/version.json
 Get-Content .build/releases/v1.0.4/SHA256SUMS.txt
 ~~~

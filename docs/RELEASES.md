@@ -12,13 +12,13 @@
 проверку без сборки и публикации:
 
 ~~~powershell
-pwsh ./scripts/Publish-Release.ps1 -Repository GC-Preferans/Preferans -Tag v1.0.4 -CheckOnly
+pwsh ./scripts/Publish-Release.ps1 -Repository <владелец>/<приватный-репозиторий> -Tag v1.0.4 -CheckOnly
 ~~~
 
 Затем соберите и опубликуйте приложения:
 
 ~~~powershell
-pwsh ./scripts/Publish-Release.ps1 -Repository GC-Preferans/Preferans -Tag v1.0.4 -Notes "Описание выпуска"
+pwsh ./scripts/Publish-Release.ps1 -Repository <владелец>/<приватный-репозиторий> -Tag v1.0.4 -Notes "Описание выпуска"
 ~~~
 
 Флаг ИИ по умолчанию `Off`. При необходимости его можно задать явно через `-AI`.
