@@ -1807,3 +1807,8 @@ body.at-table .table-heading > div:first-child > #table-progress { max-width: 17
 .discard-tray-spacer { flex: 0 0 auto; height: clamp(66px, 13dvh, 120px); min-width: 220px; visibility: hidden; pointer-events: none; }
 /* Version and copyright line at the bottom of the settings panel; plain selectable text. */
 .about-line { margin: 14px 0 0; text-align: center; font-size: 12px; line-height: 16px; opacity: .7; user-select: text; -webkit-user-select: text; }
+/* About panel opened from the brand in the header. */
+.about-panel { text-align: center; display: grid; gap: 8px; justify-items: center; }
+.about-panel h3 { margin: 0; font-size: 22px; }
+.about-panel p { margin: 0; user-select: text; -webkit-user-select: text; }
+.about-panel .about-version { font-size: 16px; font-weight: 600; }

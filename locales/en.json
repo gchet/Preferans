@@ -888,5 +888,9 @@
   "web.connection.room_service": "Room server",
   "web.connection.server_required": "Enter your own connection server address",
   "go.connection.service_busy": "Finish the game and leave the room before changing servers.",
-  "web.about.line": "Preferans {p0} · © 2026 gchet · MIT"
+  "web.about.line": "Preferans {p0} · © 2026 gchet · MIT",
+  "web.about.license": "Distributed under the MIT license. Third-party licenses are included with the release.",
+  "web.about.source": "Source code",
+  "web.about.title": "About",
+  "web.about.version": "Version {p0}"
 }

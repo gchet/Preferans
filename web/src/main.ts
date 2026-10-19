@@ -19,6 +19,7 @@ import './misere-tracker.css';
 import './start-layout.css';
 import './voice.css';
 import { fitCardFans } from './card-fan-layout';
+const appVersion = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
 window.addEventListener('resize', () => requestAnimationFrame(fitCardFans));
 import { wholeWhists } from "./settlement";
 import {historyTotals, type HistoryEntry} from './history';
@@ -824,6 +825,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
         settings: t("web.main.text106"),
         network: t("web.main.text105"),
         score: t("web.main.text104"),
+        about: t("web.about.title"),
       } as Record<string, string>
     )[kind] || kind;
   const v = historyView || status.view;
@@ -846,6 +848,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
     $("#panel-body").innerHTML=`<section id="bot-models"></section>`;
     void aiUI.assignments($("#bot-models"),v.players,botSeat);
   }
+  if (kind === "about") $("#panel-body").innerHTML = `<section class="about-panel"><div class="table-symbol">♠</div><h3>${t("web.shell.text001")}</h3><p class="about-version">${t("web.about.version", {p0: esc(appVersion)})}</p><p>© 2026 gchet</p><p>${t("web.about.license")}</p><p>${t("web.about.source")}: github.com/gchet/Preferans</p></section>`;
   if (kind === "rules") $("#panel-body").innerHTML = rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), false, true) + rulesHTML;
   if (kind === "settings")
     $("#panel-body").innerHTML =
@@ -878,7 +881,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
     $("#settings-game").insertAdjacentHTML("afterbegin", `<label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label>`);
     $('#settings-game').insertAdjacentHTML('afterbegin',`<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label>`);
     previewDeck();
-    $("#panel-body").insertAdjacentHTML("beforeend", `<p class="about-line">${esc(t("web.about.line", {p0: typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__}))}</p>`);
+    $("#panel-body").insertAdjacentHTML("beforeend", `<p class="about-line">${esc(t("web.about.line", {p0: appVersion}))}</p>`);
   }
   if (kind === "network")
     $("#panel-body").innerHTML =
@@ -1148,6 +1151,7 @@ document.addEventListener("click", (e) => {
   });
   if (b.id === "brand") {
     e.preventDefault();
+    showPanel("about");
     return;
   }
   if (b.dataset.action)
@@ -1352,7 +1356,11 @@ document.addEventListener("change", (e) => {
   if(el.matches('[data-language-picker]')) {
     const next=normalizeLanguage(el.value);
     if(next===language)return;
-    void run(async()=>{
+    void (async()=>{
+    // A busy app drops user actions; wait for it instead of losing the language choice.
+    for(let i=0;i<200&&busy;i++)await new Promise(r=>setTimeout(r,25));
+    if(next===language)return;
+    await run(async()=>{
       // Fetch fresh preferences to preserve concurrent edits and table state.
       const latest=await rpc<Status>('status');
       await rpc('appearance',{appearance:{...latest.appearance,language:next}});
@@ -1361,6 +1369,7 @@ document.addEventListener("change", (e) => {
       voice.preserveMicrophoneOnReload();
       location.reload();
     });
+    })();
     return;
   }
   if(el.name.startsWith('debug-') && status.aiEnabled !== false)aiUI.setDebug(!!document.querySelector<HTMLInputElement>('[name="debug-auction"]')?.checked || !!document.querySelector<HTMLInputElement>('[name="debug-play"]')?.checked);

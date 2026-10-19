@@ -888,5 +888,9 @@
   "web.connection.room_service": "Сервер комнат",
   "web.connection.server_required": "Укажите адрес своего сервера подключения",
   "go.connection.service_busy": "Перед сменой сервера завершите партию и выйдите из комнаты.",
-  "web.about.line": "Преферанс {p0} · © 2026 gchet · MIT"
+  "web.about.line": "Преферанс {p0} · © 2026 gchet · MIT",
+  "web.about.license": "Распространяется по лицензии MIT. Лицензии сторонних компонентов приложены к выпуску.",
+  "web.about.source": "Исходный код",
+  "web.about.title": "О программе",
+  "web.about.version": "Версия {p0}"
 }

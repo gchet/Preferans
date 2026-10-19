@@ -73,6 +73,13 @@ test('rooms: local language selection persists across screens without changing t
   await expect(page.locator('#panel [data-language-picker]')).toHaveValue('en');
 });
 
+test('about panel opens from the brand and shows version and copyright', async ({page}) => {
+  await page.goto(url);
+  await page.locator('#brand').click();
+  await expect(page.locator('#panel')).toContainText('© 2026 gchet');
+  await expect(page.locator('#panel .about-version')).toContainText(/\d|dev/);
+});
+
 test.describe('local offline interface',()=>{
   test.use({hasTouch:true,isMobile:true});
   test('rooms: local bots work without TURN and leave by tapping in both orientations',async({page})=>{
