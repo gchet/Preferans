@@ -5,11 +5,11 @@ import "preferans/locales"
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -27,7 +27,13 @@ type Server struct {
 
 // Start listens on all network interfaces and serves only version.json and the
 // APK named by that manifest. It is intended for a trusted home/LAN network.
+// Start serves the update files on every interface so Android devices on the LAN can reach it.
 func Start(root string, port int) (*Server, error) {
+	return StartOn(root, "0.0.0.0", port)
+}
+
+// StartOn is Start bound to a specific host address (tests use 127.0.0.1 to avoid firewall prompts).
+func StartOn(root, host string, port int) (*Server, error) {
 	if port < 0 || port > 65535 {
 		return nil, locales.Errorf("go.internal.update.server.text001", port)
 	}
@@ -79,7 +85,7 @@ func Start(root string, port int) (*Server, error) {
 		}
 		http.ServeFile(w, r, filepath.Join(root, m.APK))
 	})
-	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
 		return nil, err
 	}

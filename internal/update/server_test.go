@@ -17,7 +17,7 @@ func TestServerServesManifestAndAPKOnly(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "Preferans.apk"), []byte("apk-data"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Start(dir, 0)
+	s, err := StartOn(dir, "127.0.0.1", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,9 @@ import (
 
 var DefaultTURN = config.Network.TurnServer
 
+// turnCheckListenAddr is the local socket for TURN checks; tests bind loopback only.
+var turnCheckListenAddr = "0.0.0.0:0"
+
 // CheckTURN obtains and releases a real allocation; a STUN response is not enough.
 func CheckTURN(ctx context.Context, entry string) (string, error) {
 	p := strings.Split(entry, "|")
@@ -52,7 +55,7 @@ func CheckTURN(ctx context.Context, entry string) (string, error) {
 				break
 			}
 		}
-		conn, err = net.ListenPacket("udp4", "0.0.0.0:0")
+		conn, err = net.ListenPacket("udp4", turnCheckListenAddr)
 	} else {
 		return "", locales.Errorf("go.internal.network.turn_check.text004")
 	}

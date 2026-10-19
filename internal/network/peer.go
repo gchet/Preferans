@@ -10,12 +10,21 @@ import (
 	"encoding/json"
 
 	"io"
+	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 )
+
+// loopbackOnly keeps ICE on loopback addresses and disables mDNS. Tests set it so they do not open
+// sockets on real interfaces, which makes Windows Firewall ask for permission.
+var loopbackOnly atomic.Bool
+
+func SetLoopbackOnly(on bool) { loopbackOnly.Store(on) }
 
 const Version = 1
 const MaxMessage = 8 * 1024 * 1024
@@ -107,6 +116,11 @@ func New(serversConfig []string) (*Peer, error) {
 	}
 	se := webrtc.SettingEngine{}
 	se.SetICETimeouts(15*time.Second, 45*time.Second, 3*time.Second)
+	if loopbackOnly.Load() {
+		se.SetIncludeLoopbackCandidate(true)
+		se.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+		se.SetICEMulticastDNSMode(ice.MulticastDNSModeDisabled)
+	}
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(se))
 	pc, e := api.NewPeerConnection(webrtc.Configuration{ICEServers: servers})
 	if e != nil {
