@@ -1800,8 +1800,8 @@ body.at-table .table-heading > div:first-child > #table-progress { max-width: 17
 @media (max-width: 500px) { .table-rules { grid-template-columns: 1fr; } }
 
 /* Talon that is open only as a hint before the first lead (it closes afterwards).
-   A thrown-open talon (.talon-temp absent) keeps normal cards. The filter works for every card deck, including image decks. */
-.revealed-talon.talon-temp .card { filter: brightness(.78) saturate(.85); outline: 2px dashed #e8d27a; outline-offset: 2px; }
+   A thrown-open talon (.talon-temp absent) has no frame. Only the 4-player game can throw the talon open, so 3 players never get the class. */
+.revealed-talon.talon-temp .card { outline: 2px dashed #e8d27a; outline-offset: 2px; }
 
 /* When the talon is thrown open the discard tray disappears; keep its height so the table is not resized. */
 .discard-tray-spacer { flex: 0 0 auto; height: clamp(66px, 13dvh, 120px); min-width: 220px; visibility: hidden; pointer-events: none; }
