@@ -482,10 +482,12 @@ function lastTrick(v: View): string {
   }).join('')}</div></section>` : '';
 }
 function misereTracker(v: View): string {
-  return `<section class="misere-tracker" aria-label="${t("web.main.text221")}"><small>${t("web.main.text222", {p0: v.misereCards!.length})}</small><div class="misere-tracker-grid">${ordered(v.misereCards!).map(c => {
+  const cards = ordered(v.misereCards!);
+  const groups = [0, 1, 2, 3].map(s => cards.filter(c => (c >> 3) === s)).filter(g => g.length);
+  return `<section class="misere-tracker" style="--mt-n:${cards.length};--mt-max:${Math.max(...groups.map(g => g.length))}" aria-label="${t("web.main.text221")}"><small>${t("web.main.text222", {p0: v.misereCards!.length})}</small><div class="misere-tracker-grid">${groups.map(g => `<div class="misere-suit">${g.map(c => {
     const played = v.miserePlayed?.includes(c);
     return miniCard(c, `misere-tracker-card ${played ? 'was-played' : ''}`, played ? t("web.main.text220") : '');
-  }).join('')}</div></section>`;
+  }).join('')}</div>`).join('')}</div></section>`;
 }
 function trickCount(n: number) { return `${n} ${n === 1 ? t("web.main.text219") : n >= 2 && n <= 4 ? t("web.main.text218") : t("web.main.text217")}`; }
 function openClaim() {

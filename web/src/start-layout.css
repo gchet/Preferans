@@ -26,6 +26,8 @@ body:not(.at-table) .surface h3 { margin-top: 12px; }
 @media (max-height: 450px) {
   body.at-table .topbar button,
   body.at-table .topbar select { min-height: 0; height: 26px; padding-block: 0; }
+  /* The 28px suit sign has a ~37px line box and stuck out above the 30px bar. */
+  .brand > span:first-child { font-size: 20px; line-height: 1; }
 }
 
 /* Narrow screens: the language picker, the brand and six buttons need about 800px in one row.

@@ -683,7 +683,7 @@ for (const [n,dealer] of [[3,2],[4,2],[4,1],[4,3]]) test(`misere tracker retains
     if(route.request().postDataJSON().action==='status'){
       body.data.roomMode=false;
       const v=body.data.view, declarer=dealer===1?2:1;
-      Object.assign(v,{stage:'play',round:1,revision:100+played.length,dealer,declarer,actor:0,turn:0,contract:{misere:true,suit:4,level:0},hand:Array.from({length:10},(_,i)=>i+12),actions:['play'],legal:[12],taken:Array(n).fill(0),trick:[],lastTrick:Array.from({length:n},(_,i)=>({seat:i,card:i*8})),trickNo:0,misereCards:Array.from({length:12},(_,i)=>i),miserePlayed:played});
+      Object.assign(v,{stage:'play',round:1,revision:100+played.length,dealer,declarer,actor:0,turn:0,contract:{misere:true,suit:4,level:0},hand:Array.from({length:10},(_,i)=>i+12),actions:['play'],legal:[12],taken:Array(n).fill(0),trick:[],lastTrick:Array.from({length:n},(_,i)=>({seat:i,card:i*8})),trickNo:0,misereCards:[0,1,2,5,8,9,16,17,18,24,25,26],miserePlayed:played});
       v.players.forEach((p:any,i:number)=>{p.count=n===4&&i===dealer?0:10;p.cards=i!==declarer&&i!==dealer?Array.from({length:10},(_,j)=>j+12):[]});
     }
     await route.fulfill({response,json:body});
@@ -711,6 +711,19 @@ for (const [n,dealer] of [[3,2],[4,2],[4,1],[4,3]]) test(`misere tracker retains
   const box=(await page.locator('.misere-tracker').boundingBox())!;
   expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.x+box.width).toBeLessThanOrEqual(1100);expect(box.y+box.height).toBeLessThanOrEqual(800);
+  if(n===3){
+    // The row is lifted into the heading strip: below the top bar, clear of the heading text and of the side players' cards.
+    const lift=await page.evaluate(()=>{const tr=document.querySelector('.misere-tracker')!.getBoundingClientRect(),top=document.querySelector('.topbar')!.getBoundingClientRect(),hit=(sel:string)=>[...document.querySelectorAll(sel)].some(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.left<tr.right&&r.right>tr.left&&r.top<tr.bottom&&r.bottom>tr.top;});return {belowBar:tr.top>=top.bottom,heading:hit('.table-heading > *'),sideCards:hit('.player-left .player-cards > *, .player-right .player-cards > *')};});
+    expect(lift).toEqual({belowBar:true,heading:false,sideCards:false});
+  }
+  // Cards are grouped by suit: the gap between suits is wider than between cards of one suit.
+  const gaps=await page.evaluate(()=>{const cs=[...document.querySelectorAll('.misere-tracker .mini-card')];const same:number[]=[],between:number[]=[];for(let i=1;i<cs.length;i++){const a=cs[i-1].getBoundingClientRect(),b=cs[i].getBoundingClientRect();if(Math.abs(a.top-b.top)>1)continue;(cs[i].parentElement===cs[i-1].parentElement?same:between).push(b.left-a.right);}return {same,between};});
+  expect(Math.max(...gaps.same)).toBeLessThan(Math.min(...gaps.between));
+  // Several rows means one suit per row; otherwise all suits share one row.
+  const suitTops=await page.evaluate(()=>[...document.querySelectorAll('.misere-suit')].map(s=>[...s.querySelectorAll('.mini-card')].map(c=>Math.round(c.getBoundingClientRect().top))));
+  for(const tops of suitTops) expect(new Set(tops).size).toBe(1);
+  const firstTops=suitTops.map(x=>x[0]);
+  expect(new Set(firstTops).size===1||new Set(firstTops).size===firstTops.length).toBe(true);
   await page.screenshot({path:`../.build/misere-tracker-${n}-${dealer}.png`});
   await page.setViewportSize({width:1024,height:600});
   await page.waitForTimeout(150);
@@ -719,12 +732,23 @@ for (const [n,dealer] of [[3,2],[4,2],[4,1],[4,3]]) test(`misere tracker retains
     expect(Math.abs(square.width-square.height)).toBeLessThan(1);
     expect(face.height).toBeLessThanOrEqual(square.height);
   }
+  await page.setViewportSize({width:1024,height:600});await page.waitForTimeout(200);
+  await page.setViewportSize({width:1024,height:600});await page.waitForTimeout(200);
   const compactPreview=(await page.locator('.last-trick').boundingBox())!;
   const compactPool=(await page.locator('.pool-drawing').boundingBox())!;
   expect(compactPreview.x+compactPreview.width).toBeLessThanOrEqual(compactPool.x);
   await page.screenshot({path:`../.build/mini-cards-compact-${n}-${dealer}.png`});
 });
-test('Here button repeats the offered bid and hides when repetition is unavailable',async({page})=>{
+test('brand suit sign stays inside the top bar on short landscape screens',async({page})=>{
+  await page.setViewportSize({width:919,height:411});
+  await page.goto(url);
+  await page.getByLabel('Боты для отладки').check();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await expect(page.locator('.center.lobby')).toBeVisible();
+  const m=await page.evaluate(()=>{const bar=document.querySelector('.topbar')!.getBoundingClientRect(),s=document.querySelector('.brand > span')!,r=s.getBoundingClientRect(),b=document.querySelector('.brand')!.getBoundingClientRect();return {bar:[bar.top,bar.bottom],brand:[b.top,b.bottom],span:[r.top,r.bottom],fs:getComputedStyle(s).fontSize,lh:getComputedStyle(s).lineHeight};});
+  expect(m.span[0]).toBeGreaterThanOrEqual(m.bar[0]);
+  expect(m.span[1]).toBeLessThanOrEqual(m.bar[1]);
+});test('Here button repeats the offered bid and hides when repetition is unavailable',async({page})=>{
   await page.goto(url);
   await page.getByLabel('Боты для отладки').check();
   await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
