@@ -9,7 +9,7 @@ require (
 	github.com/pion/webrtc/v4 v4.2.20
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	golang.org/x/crypto v0.57.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
