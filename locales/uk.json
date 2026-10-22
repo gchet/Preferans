@@ -21,6 +21,7 @@
   "web.debug.claim": "Беру ще {p0} взяток",
   "web.pass_price.setting": "Підказка ціни розпасів",
   "web.pass_price.label": "Розпаси (по {p0})",
+  "web.pass_price.reminder": "Були розпаси ({p0})",
   "go.dealer_whist.choice": "Виберіть відмову або руку одного з двох захисників",
   "web.dealer_whist.stage": "Перевіст здавача",
   "web.dealer_whist.no": "Ні",

@@ -224,6 +224,44 @@ for(const gesture of ['right-click','long-press'])test(`debug bot turn accepts $
   await expect(page.locator('#panel')).not.toBeVisible();
 });
 
+for(const players of [3,4])test(`auction after unbeaten all-passes reminds about them while the price hint is on: ${players}`,async({page})=>{
+  await page.request.post(new URL('/api',url).href,{headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},data:{action:'create',players,target:30,name:'Игрок',bots:true}});
+  let streak=2,stage='auction',allPass=false;
+  await page.route('**/api',async route=>{
+    if(route.request().postDataJSON().action!=='status')return route.fallback();
+    const response=await route.fetch(),body=await response.json(),v=body.data.view;
+    Object.assign(v,{stage,revision:200+streak+stage.length,round:1,allPass,passStreak:streak,passPrice:4,actor:0,turn:0,hand:[],actions:stage==='auction'?['bid','pass']:[],taken:Array(players).fill(0),trick:[],trickNo:0});
+    await route.fulfill({response,json:body});
+  });
+  await page.goto(url);
+  const reminder=page.locator('.pass-reminder');
+  await expect(reminder).toHaveText('Были распасы (4)');
+  // Everyone sees it (3 and 4 players): a smaller line under the title in the heading row, never over the pool button.
+  const geo=()=>page.evaluate(()=>{const r=document.querySelector('.pass-reminder')?.getBoundingClientRect(),h1=document.querySelector('.table-heading h1')!,t=h1.getBoundingClientRect(),b=document.querySelector('.table-heading button')!.getBoundingClientRect(),hd=document.querySelector('.table-heading')!.getBoundingClientRect(),pf=document.querySelector('.playing-field')!.getBoundingClientRect();return {r:r?{l:r.left,rt:r.right,t:r.top,b:r.bottom,fs:parseFloat(getComputedStyle(document.querySelector('.pass-reminder')!).fontSize)}:null,h1:{l:t.left,b:t.bottom,vis:getComputedStyle(h1).display!=='none',fs:parseFloat(getComputedStyle(h1).fontSize)},btnL:b.left,hd:[hd.top,hd.bottom],pfTop:pf.top,vw:innerWidth};});
+  for(const [w,h] of [[1280,720],[1024,600],[919,411],[390,780]]){
+    await page.setViewportSize({width:w,height:h});
+    const g=await geo();
+    expect(await page.evaluate(()=>{const r=document.querySelector('.pass-reminder')!.getBoundingClientRect();return !!document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('.pass-reminder');})).toBe(true);
+    expect(g.r!.rt).toBeLessThanOrEqual(g.btnL+1);
+    expect(g.r!.rt).toBeLessThanOrEqual(g.vw);
+    expect(g.r!.b).toBeLessThanOrEqual(g.hd[1]+1);
+    if(g.h1.vis){expect(g.r!.t).toBeGreaterThanOrEqual(g.h1.b-1);expect(Math.abs(g.r!.l-g.h1.l)).toBeLessThan(2);expect(g.r!.fs).toBeLessThan(g.h1.fs);}
+  }
+  await page.setViewportSize({width:1280,height:720});
+  const withReminder=await geo();  streak=0;
+  await expect(reminder).toHaveCount(0);
+  const without=await page.evaluate(()=>({hd:[document.querySelector('.table-heading')!.getBoundingClientRect().top,document.querySelector('.table-heading')!.getBoundingClientRect().bottom],pfTop:document.querySelector('.playing-field')!.getBoundingClientRect().top}));
+  expect(without).toEqual({hd:withReminder.hd,pfTop:withReminder.pfTop});
+  streak=1;stage='play';allPass=true;
+  await expect(reminder).toHaveCount(0);
+  streak=2;stage='auction';allPass=false;
+  await expect(reminder).toHaveText('Были распасы (4)');
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByLabel('Подсказка цены распасов',{exact:true}).uncheck();
+  await page.locator('#settings-form > button.primary').click();
+  await expect(reminder).toHaveCount(0);
+});
+
 test('all-pass price hint updates labels and persists when disabled',async({page})=>{
   await page.request.post(new URL('/api',url).href,{headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},data:{action:'create',players:3,target:30,name:'Игрок',bots:true}});
   let price=2;

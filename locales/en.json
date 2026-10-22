@@ -21,6 +21,7 @@
   "web.debug.claim": "I take {p0} more tricks",
   "web.pass_price.setting": "Show all-pass price",
   "web.pass_price.label": "All-pass ({p0} per trick)",
+  "web.pass_price.reminder": "Previous all-pass ({p0})",
   "go.dealer_whist.choice": "Decline or select one of the two defenders' hands",
   "web.dealer_whist.stage": "Dealer's rewhist",
   "web.dealer_whist.no": "No",

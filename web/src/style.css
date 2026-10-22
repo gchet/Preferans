@@ -1812,3 +1812,11 @@ body.at-table .table-heading > div:first-child > #table-progress { max-width: 17
 .about-panel h3 { margin: 0; font-size: 22px; }
 .about-panel p { margin: 0; user-select: text; -webkit-user-select: text; }
 .about-panel .about-version { font-size: 16px; font-weight: 600; }
+/* Reminder about unbeaten all-passes: a smaller line under the title in the heading row (both 3 and 4 players).
+   Its height is cancelled by negative margins, so showing or hiding it never moves the table. */
+body.at-table .table-heading .heading-title { display: flex; flex-direction: column; min-width: 0; }
+body.at-table .table-heading .pass-reminder { display: block; margin: -1px 0 -13px; font-size: 13px; line-height: 1.05; font-weight: 400; color: #e2ddbf; white-space: nowrap; }
+@media (max-height: 450px) and (min-width: 701px) {
+  /* The title is hidden on short screens: the line stays in the row beside the pool button. */
+  body.at-table .table-heading .pass-reminder { margin: 0; }
+}

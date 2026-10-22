@@ -342,7 +342,12 @@ function passLabel(v: View): string {
     ? t("web.pass_price.label", {p0: v.passPrice})
     : t("web.main.text099");
 }
-function role(v: View, i: number): string {
+// After unbeaten all-passes the auction reminds everyone about them (price of the last all-pass), if the price hint is on.
+function passReminder(v: View): string {
+  return appearance.passPriceHint !== false && v.stage === "auction" && !v.allPass && v.passStreak > 0
+    ? t("web.pass_price.reminder", {p0: v.passPrice})
+    : "";
+}function role(v: View, i: number): string {
   if (v.stage === "lobby") return v.players[i].ready ? t("web.main.text243") : t("web.main.text249");
   if (v.players.length === 4 && v.dealer === i) return v.dealerWhist ? t("web.main.text237") : t("web.main.text248");
   if (v.allPass) return passLabel(v);
@@ -643,7 +648,7 @@ function render() {
   const canSelect =
     mine && v.claim == null && !status.paused && ((v.stage === "play" && v.turn === v.seat) || (v.stage === "discard" && !talonThrown(v)));
   $("#app").innerHTML =
-    `<section class="table-heading"><div><h1>${v.stage === "lobby" ? t("web.main.text163") : esc(title)}</h1><button data-panel="score">${tableProgress(v)}</button></div></section>
+    `<section class="table-heading"><div><div class="heading-title"><h1>${v.stage === "lobby" ? t("web.main.text163") : esc(title)}</h1>${passReminder(v) ? `<small class="pass-reminder">${esc(passReminder(v))}</small>` : ""}</div><button data-panel="score">${tableProgress(v)}</button></div></section>
  <div class="playing-field ${v.players.length === 3 ? "three-player-table" : ""}"><section class="opponents">${other
    .map(
      ({ p, i }) =>
