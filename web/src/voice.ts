@@ -33,6 +33,8 @@ export class VoiceChat {
   private soundEnabled = true;
   private mutedPlayers = new Set<string>();
   private resumeMic?: {roomId: string; seat: number};
+  private restoreMicrophone = false;
+  private backgrounded = false;
   private outbound: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setInterval>;
   constructor(private rpc: RPC, private notify: (message: string) => void) {
@@ -45,7 +47,7 @@ export class VoiceChat {
           this.resumeMic = {roomId:value.roomId, seat:value.seat};
       }
     } catch { /* Session storage may be unavailable in restricted WebViews. */ }
-    this.timer = setInterval(() => void this.tick(), 500);
+    this.timer = setInterval(() => void this.tick(), 100);
     document.addEventListener('click', e => {
       const speaker=(e.target as Element).closest<HTMLButtonElement>('[data-speaker]');
       if(speaker && this.room){
@@ -59,8 +61,22 @@ export class VoiceChat {
       if ((e.target as Element).closest('[data-microphone]')) void this.toggle();
     });
     document.addEventListener('pointerdown', () => this.playAudio());
-    document.addEventListener('visibilitychange', () => { if (document.hidden) void this.mute(); });
-    window.addEventListener('preferans-voice-suspend', () => { void this.mute(); });
+    window.addEventListener('preferans-voice-background', () => {
+      this.backgrounded = true;
+      this.restoreMicrophone = !!this.stream;
+    });
+    window.addEventListener('preferans-voice-resume', () => {
+      this.backgrounded = false;
+      const restore = this.restoreMicrophone;
+      this.restoreMicrophone = false;
+      if (restore && !this.stream) void this.toggle();
+    });
+    // Android sends this only when the device is locked (screen turned off).
+    window.addEventListener('preferans-voice-lock', () => {
+      this.backgrounded = false;
+      this.restoreMicrophone = false;
+      void this.mute();
+    });
     window.addEventListener('pagehide', () => { this.stop(); clearInterval(this.timer); });
   }
   sync(status: {view: Room | null; connected: boolean[]; stun: string[]}) {
@@ -214,12 +230,15 @@ export class VoiceChat {
       const track = stream.getAudioTracks()[0];
       track.onended = () => {
         if (this.stream?.getAudioTracks().includes(track)) {
+          if (this.backgrounded) this.restoreMicrophone = true;
           this.notify(t('web.voice.text017'));
           void this.mute();
         }
       };
       await Promise.all([...this.peers.values()].map(p => p.sender?.replaceTrack(track).catch(() => {})));
       await this.send('hello');
+      this.heartbeat = Date.now();
+      void this.tick();
     } catch (e) {
       await this.mute();
       this.notify(e instanceof DOMException && e.name === 'NotAllowedError' ? t("web.voice.text014") : `${t("web.voice.text013", {p0: e instanceof Error ? e.message : e})}`);
@@ -238,6 +257,7 @@ export class VoiceChat {
   }
   private stop() {
     this.stream?.getTracks().forEach(t => t.stop()); this.stream = undefined;
+    this.restoreMicrophone = false; this.backgrounded = false;
     for (const peer of this.peers.values()) this.close(peer);
     this.peers.clear(); this.room = null;
   }

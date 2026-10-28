@@ -1,7 +1,11 @@
 package com.preferans.game
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.webkit.PermissionRequest
 import android.content.Intent
@@ -51,6 +55,12 @@ class MainActivity : Activity() {
     private var microphoneRequest: PermissionRequest? = null
     private var exiting = false
     private var exportingLog = false
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF && ::web.isInitialized)
+                web.evaluateJavascript("window.dispatchEvent(new Event('preferans-voice-lock'))", null)
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         language = getSharedPreferences("interface", MODE_PRIVATE).getString("language", "uk") ?: "uk"
@@ -196,6 +206,10 @@ class MainActivity : Activity() {
                 insets
             }
             setContentView(web)
+            if (Build.VERSION.SDK_INT >= 33)
+                registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF), Context.RECEIVER_NOT_EXPORTED)
+            else
+                registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
             web.loadUrl(url)
         } catch (e: Exception) {
             setContentView(TextView(this).apply { text = text("android.start.failed", e.message); setPadding(24, 48, 24, 24) })
@@ -317,6 +331,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onDestroy() {
+        try { unregisterReceiver(screenOffReceiver) } catch (_: IllegalArgumentException) { }
         microphoneRequest?.deny()
         microphoneRequest = null
         files?.onReceiveValue(null)
@@ -342,13 +357,18 @@ class MainActivity : Activity() {
     }
     override fun onPause() {
         if (::web.isInitialized) {
-            web.evaluateJavascript("window.dispatchEvent(new Event('preferans-voice-suspend'))", null)
+            val locked = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+            val event = if (locked) "preferans-voice-lock" else "preferans-voice-background"
+            web.evaluateJavascript("window.dispatchEvent(new Event('$event'))", null)
             web.onPause()
         }
         super.onPause()
     }
     override fun onResume() {
         super.onResume()
-        if (::web.isInitialized) web.onResume()
+        if (::web.isInitialized) {
+            web.onResume()
+            web.evaluateJavascript("window.dispatchEvent(new Event('preferans-voice-resume'))", null)
+        }
     }
 }

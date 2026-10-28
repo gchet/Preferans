@@ -106,6 +106,23 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     await expect.poll(mutedAudio).toEqual([{seat:'1',muted:true},{seat:'2',muted:false}]);
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
     expect(await clients[1].page.locator('[data-voice-audio]').evaluateAll(nodes=>nodes.every(n=>!(n as HTMLAudioElement).muted))).toBeTruthy();
+    // A normal Android background transition keeps the microphone state. If the
+    // platform stops its track while backgrounded, returning restores it.
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-background')));
+    await host.evaluate(()=>{
+      const track=(window as any).__tracks.find((candidate:MediaStreamTrack)=>candidate.readyState==='live');
+      track?.dispatchEvent(new Event('ended'));
+    });
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-resume')));
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
+    // Locking the device is different: it always leaves the microphone off.
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-lock')));
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-resume')));
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    await host.locator('[data-microphone]').click();
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
     if(roomsMode){
       await rpc(0,'create',{players:4,target:30,name:'Voice host',bots:true});
       for(const {page} of clients){
