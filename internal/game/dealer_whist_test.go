@@ -69,6 +69,7 @@ func TestDealerWhistSelectionAndPrivacy(t *testing.T) {
 				t.Fatal("selected hand lost in save")
 			}
 			s = step(t, &restored, restored.Dealer, "whist", nil)
+			s = step(t, s, s.Dealer, "open", nil)
 			if !s.DealerWhist || !s.Open || s.Controller != s.Dealer || s.Stage != "play" {
 				t.Fatal("dealer did not take control of open defence")
 			}
@@ -105,6 +106,7 @@ func TestDealerWhistDelayedOpeningAndReset(t *testing.T) {
 	s := dealerWhistChoice(t, 7)
 	s = step(t, s, s.Dealer, "dealer-second", nil)
 	s = step(t, s, s.Dealer, "whist", nil)
+	s = step(t, s, s.Dealer, "open", nil)
 	if s.Turn != s.Declarer {
 		t.Fatal("fixture must have declarer's opening lead")
 	}
@@ -136,6 +138,7 @@ func TestDealerWhistControllerSurvivesSaveDuringPlay(t *testing.T) {
 	s := dealerWhistChoice(t, 8)
 	s = step(t, s, s.Dealer, "dealer-first", nil)
 	s = step(t, s, s.Dealer, "whist", nil)
+	s = step(t, s, s.Dealer, "open", nil)
 	s.Turn = s.Defenders[0]
 	s.SetPaused(true, 100)
 
@@ -227,6 +230,7 @@ func TestDealerWhistAfterHalfWhist(t *testing.T) {
 			}
 			s = step(t, s, s.Dealer, "dealer-first", nil)
 			s = step(t, s, s.Dealer, "whist", nil)
+			s = step(t, s, s.Dealer, "open", nil)
 			if s.HalfSeat != -1 || s.Defence[half] != 1 || s.Controller != s.Dealer {
 				t.Fatal("dealer whist must replace half-whist and control both hands")
 			}
@@ -248,6 +252,7 @@ func TestDealerWhistScoresAndClaims(t *testing.T) {
 				s := dealerWhistChoice(t, level)
 				s = step(t, s, s.Dealer, "dealer-second", nil)
 				s = step(t, s, s.Dealer, "whist", nil)
+				s = step(t, s, s.Dealer, "open", nil)
 				if full {
 					s.Rules.Responsibility = "full"
 				} else {
@@ -285,6 +290,7 @@ func TestDealerWhistScoresAndClaims(t *testing.T) {
 	s := dealerWhistChoice(t, 7)
 	s = step(t, s, s.Dealer, "dealer-first", nil)
 	s = step(t, s, s.Dealer, "whist", nil)
+	s = step(t, s, s.Dealer, "open", nil)
 	s.Turn = s.Declarer
 	if !s.canClaim() {
 		t.Fatal("declarer cannot propose to dealer")
@@ -307,6 +313,7 @@ func TestBotDealerMaySkipAndDealCanFinish(t *testing.T) {
 	}
 	s = step(t, s, s.Dealer, "dealer-first", nil)
 	s = step(t, s, s.Dealer, "whist", nil)
+	s = step(t, s, s.Dealer, "open", nil)
 	for count := 0; count < 50 && s.Stage != "round"; count++ {
 		command := BotCommand(s.View(s.Actor()))
 		var err error
@@ -317,5 +324,26 @@ func TestBotDealerMaySkipAndDealCanFinish(t *testing.T) {
 	}
 	if s.Stage != "round" || s.TrickNo != 10 {
 		t.Fatal("dealer-controlled play cannot finish")
+	}
+}
+
+func TestDealerWhistChoosesOpenOrClosed(t *testing.T) {
+	for _, mode := range []string{"open", "closed"} {
+		s := dealerWhistChoice(t, 7)
+		s = step(t, s, s.Dealer, "dealer-first", nil)
+		s = step(t, s, s.Dealer, "whist", nil)
+		if s.Stage != "mode" || s.Actor() != s.Dealer || !s.DealerWhist || s.Defence[s.Dealer] != 2 {
+			t.Fatalf("dealer must choose open or closed after whisting: stage=%s", s.Stage)
+		}
+		if !reflect.DeepEqual(s.View(s.Dealer).Actions, []string{"open", "closed"}) {
+			t.Fatal("dealer must be offered open and closed")
+		}
+		s = step(t, s, s.Dealer, mode, nil)
+		if s.Stage != "play" || s.Open != (mode == "open") || !s.DealerWhist {
+			t.Fatalf("mode %s not applied: stage=%s open=%t", mode, s.Stage, s.Open)
+		}
+		if mode == "closed" && s.Turn != s.Declarer && s.Actor() != s.Turn {
+			t.Fatal("closed play: each defender must move own hand")
+		}
 	}
 }

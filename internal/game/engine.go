@@ -390,8 +390,9 @@ func (s *State) apply(c Command, deck []Card) error {
 		}
 		s.Defence[s.Dealer] = 2
 		s.Controller = s.Dealer
-		s.Open = true
-		s.beginTrick(s.Active()[0])
+		// Like a single whister, the dealer chooses open or closed play next.
+		s.Stage = "mode"
+		s.Turn = s.Dealer
 		return nil
 	case "mode":
 		if c.Action != "open" && c.Action != "closed" {

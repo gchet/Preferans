@@ -48,7 +48,8 @@ func (s *State) score() {
 		l.Label = locales.Format("go.internal.game.score.text001", s.PassPrice)
 		for p, t := range s.Taken {
 			l.Mountain[p] = (t - minimum) * s.PassPrice
-			if t == 0 {
+			// The dealer of a four-player deal only owns the talon: no pool entry for zero tricks.
+			if t == 0 && !(n == 4 && p == s.Dealer) {
 				l.Pool[p] = s.PassPrice
 			}
 		}

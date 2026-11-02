@@ -349,7 +349,7 @@ function passReminder(v: View): string {
     : "";
 }function role(v: View, i: number): string {
   if (v.stage === "lobby") return v.players[i].ready ? t("web.main.text243") : t("web.main.text249");
-  if (v.players.length === 4 && v.dealer === i) return v.dealerWhist ? t("web.main.text237") : t("web.main.text248");
+  if (v.players.length === 4 && v.dealer === i) return v.dealerWhist ? (v.stage === "play" && v.trickNo === 0 && !v.trick?.length ? (v.open ? t("web.main.text233") : t("web.main.text232")) : t("web.main.text237")) : t("web.main.text248");
   if (v.allPass) return passLabel(v);
   if (v.stage === "discard" && v.passed?.[i]) return t("web.main.text206");
   if (v.stage === "auction")

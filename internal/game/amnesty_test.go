@@ -33,7 +33,7 @@ func TestPassAmnestyFromCurrentTricks(t *testing.T) {
 		for seat, taken := range tc.taken {
 			expected.Mountain[seat] += taken * tc.price
 			want[seat] += tc.delta[seat]
-			if taken == 0 {
+			if taken == 0 && !(len(tc.mountain) == 4 && seat == s.Dealer) {
 				expected.Pool[seat] += tc.price
 			}
 		}
@@ -82,5 +82,31 @@ func TestAmnestyDoesNotApplyToOrdinaryGame(t *testing.T) {
 		if mountain < before[seat] {
 			t.Fatal("ordinary mountain reduced")
 		}
+	}
+}
+
+func TestPassDealerWithoutTricksWritesNoPool(t *testing.T) {
+	s := testState(t, 4)
+	s.Talon = []Card{0, 8}
+	s.AllPass = true
+	s.PassPrice = 2
+	s.PassStreak = 1
+	s.Round = 1
+	s.TrickNo = 10
+	s.Taken = make([]int, 4)
+	for seat := range s.Taken {
+		if seat != s.Dealer {
+			s.Taken[seat] = 3
+		}
+	}
+	s.Taken[(s.Dealer+1)%4] = 0
+	s.Taken[(s.Dealer+2)%4] = 5
+	s.Taken[(s.Dealer+3)%4] = 5
+	s.score()
+	if s.Pool[s.Dealer] != 0 {
+		t.Fatalf("dealer without tricks wrote to the pool: %v", s.Pool)
+	}
+	if s.Pool[(s.Dealer+1)%4] != 2 {
+		t.Fatalf("player without tricks must write to the pool: %v", s.Pool)
 	}
 }
