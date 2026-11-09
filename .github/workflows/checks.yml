@@ -62,6 +62,18 @@ jobs:
         with:
           go-version: '1.27.x'
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
-      - run: govulncheck ./config ./internal/... ./cmd/signaling ./mobile
+      # GO-2024-3218 (цензура контента через записи провайдеров в Kademlia DHT, исправления нет): приложение
+      # использует DHT только как клиент поиска узлов для relay и не публикует и не ищет записи провайдеров.
+      # Все остальные уязвимости по-прежнему роняют проверку.
+      - name: govulncheck
+        run: |
+          govulncheck -format json ./config ./internal/... ./cmd/signaling ./mobile > vuln.json
+          found=$(jq -r 'select(.finding.trace[0].function != null) | .finding.osv' vuln.json | sort -u | grep -v -x 'GO-2024-3218' || true)
+          if [ -n "$found" ]; then
+            echo "Найдены уязвимости: $found"
+            govulncheck ./config ./internal/... ./cmd/signaling ./mobile || true
+            exit 1
+          fi
+          echo "Уязвимостей кроме принятой GO-2024-3218 нет."
       - run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
       - run: gitleaks git --redact --log-opts=--all .
