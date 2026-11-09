@@ -17,6 +17,8 @@ permissions:
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
+  # SHA-256 сертификата подписи APK версий 1.x (публичный отпечаток, не секрет).
+  ANDROID_CERT_SHA256: abdf0c754bef5098f7102c451861bd271c7336a860bce91d15bf7413cea6ec26
 
 jobs:
   windows:
@@ -114,6 +116,8 @@ jobs:
           mkdir -p ~/.android
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            echo "Отпечаток восстановленного ключа (сертификат, не секрет):"
+            keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -iE 'androiddebugkey|SHA-?256' || echo "keytool не смог прочитать ключ: проверьте значение секрета DEBUG_KEYSTORE_B64"
           else
             echo "::warning::Секрет DEBUG_KEYSTORE_B64 не задан: APK будет подписан одноразовым ключом, обновление поверх установленной версии не пройдёт."
           fi
@@ -128,7 +132,11 @@ jobs:
           go build -buildvcs=false -o "$RUNNER_TEMP/bin/gobind" golang.org/x/mobile/cmd/gobind
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Build APK
+        env:
+          # Явно указываем каталог ключа Android Gradle Plugin (debug.keystore, восстановленный выше).
+          ANDROID_USER_HOME: ${{ github.workspace }}/../.android-home
         run: |
+          mkdir -p "$ANDROID_USER_HOME" && cp ~/.android/debug.keystore "$ANDROID_USER_HOME/debug.keystore" 2>/dev/null || true
           VERSION_NAME="${TAG#v}"
           VERSION_CODE="$(git log -1 --format=%ct)"
           mkdir -p android/app/libs dist
@@ -138,6 +146,10 @@ jobs:
             "-PpreferansVersionCode=$VERSION_CODE" "-PpreferansVersionName=$VERSION_NAME" \
             assembleDebug --console=plain
           cp android/app/build/outputs/apk/debug/app-debug.apk dist/Preferans.apk
+          # Релиз не должен выходить с чужим ключом: отпечаток сертификата APK обязан совпасть с ключом версий 1.x.
+          CERT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs dist/Preferans.apk | grep -i 'SHA-256 digest' | head -1)"
+          echo "$CERT"
+          echo "$CERT" | grep -qi "$ANDROID_CERT_SHA256" || { echo "Подпись APK не совпадает с ожидаемой ($ANDROID_CERT_SHA256). Проверьте секрет DEBUG_KEYSTORE_B64."; exit 1; }
           printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "apk": "Preferans.apk",\n  "aiEnabled": false\n}\n' \
             "$VERSION_CODE" "$VERSION_NAME" > dist/version.json
           cat dist/version.json
