@@ -179,9 +179,6 @@ func TestRoomAutomaticConnectionsAndReturn(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, a := range apps {
-		if e = a.Configure([]string{}); e != nil {
-			t.Fatal(e)
-		}
 		if e = a.EnterRoom(r.Room.ID); e != nil {
 			t.Fatal(e)
 		}
@@ -393,7 +390,7 @@ func TestRoomRetryTimingProtectsPendingHandshakes(t *testing.T) {
 	}{
 		{"failed", time.Second, false}, {"failed", 2 * time.Second, true},
 		{"closed", 3 * time.Second, true}, {"disconnected", 3 * time.Second, true},
-		{"waiting-answer", 3 * time.Second, false}, {"waiting-answer", 35 * time.Second, true},
+		{"waiting-guest", 3 * time.Second, false}, {"waiting-guest", 35 * time.Second, true},
 		{"gathering", 40 * time.Second, false}, {"connecting", 40 * time.Second, false},
 		{"authenticating", 40 * time.Second, false}, {"authenticating", 50 * time.Second, true},
 	} {

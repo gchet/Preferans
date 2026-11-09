@@ -39,8 +39,6 @@ func TestMixedBots(t *testing.T) {
 			host, guest := New(t.TempDir()), New(t.TempDir())
 			defer host.Close()
 			defer guest.Close()
-			_ = host.Configure(nil)
-			_ = guest.Configure(nil)
 			if err := host.Create(n, 30, "Ведущий", false); err != nil {
 				t.Fatal(err)
 			}

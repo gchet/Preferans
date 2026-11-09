@@ -25,9 +25,6 @@ func window(url string) error {
 		return err
 	}
 	titleKey := "go.cmd.preferans.window_windows.text002"
-	if appMode == "netcheck" {
-		titleKey = "go.cmd.preferans.window_windows.text003"
-	}
 	w.SetTitle(locales.Lookup(appLanguage, titleKey))
 	if err := w.Bind("preferansLanguage", func(language string) {
 		w.Dispatch(func() { w.SetTitle(locales.Lookup(language, titleKey)) })

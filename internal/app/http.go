@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"preferans/internal/game"
-	"preferans/internal/network"
 )
 
 type Request struct {
@@ -31,7 +30,6 @@ type Request struct {
 	Seat       int          `json:"seat"`
 	Code       string       `json:"code"`
 	ID         string       `json:"id"`
-	STUN       []string     `json:"stun"`
 	Command    game.Command `json:"command"`
 	Appearance Appearance   `json:"appearance"`
 	LogEnabled bool         `json:"logEnabled"`
@@ -75,14 +73,10 @@ func (a *App) RPC(r Request) (any, error) {
 		return nil, a.AssignBot(r.Seat, r.ModelID)
 	case "room-service":
 		return nil, a.SetRoomService(r.URL)
-	case "connection-setup":
-		return nil, a.CheckAndSaveConnection(r.STUN, r.Name)
 	case "voice-send":
 		return nil, a.SendVoice(r.Voice)
 	case "voice-poll":
 		return a.PollVoice(r.ID, r.After)
-	case "diagnostics":
-		return a.Diagnostics(), nil
 	case "status":
 		return a.Status(), nil
 	case "list":
@@ -111,8 +105,6 @@ func (a *App) RPC(r Request) (any, error) {
 		}
 		a.Leave()
 		return nil, nil
-	case "configure":
-		return nil, a.Configure(r.STUN)
 	case "appearance":
 		return nil, a.SetAppearance(r.Appearance)
 	case "logging":
@@ -123,17 +115,10 @@ func (a *App) RPC(r Request) (any, error) {
 		return nil, a.SetName(r.Name)
 	case "invite":
 		return a.Invite(r.Seat)
-	case "answer":
-		if err := a.Answer(r.Code); err != nil {
-			return nil, err
-		}
-		code, err := network.Decode(r.Code)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]int{"seat": code.Seat}, nil
 	case "join":
-		return a.Join(r.Code)
+		return nil, a.Join(r.Code)
+	case "service-code":
+		return a.ServiceCode()
 	case "command":
 		return nil, a.Command(r.Command)
 	case "rooms-list", "rooms-create", "rooms-rename", "rooms-delete":
@@ -212,3 +197,4 @@ func Serve(a *App, assets fs.FS) (string, func(), error) {
 }
 
 const networkLimit = 1024 * 1024
+

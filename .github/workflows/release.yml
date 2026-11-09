@@ -1,0 +1,178 @@
+name: Release build
+
+# Сборка Windows-exe и Android-APK на GitHub и черновик Release по тегу версии.
+# Запуск: git push origin v2.0.0 (тег v*) либо вручную: Actions -> Release build -> Run workflow (укажите тег).
+# Релиз создаётся ЧЕРНОВИКОМ: проверьте файлы и опубликуйте вручную.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Существующий тег версии, например v2.0.0'
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - name: Check tag matches VERSION file
+        run: test "${TAG#v}" = "$(tr -d '[:space:]' < VERSION)" || { echo "Тег $TAG не совпадает с файлом VERSION"; exit 1; }
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.x'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # MinGW-w64 с потоками POSIX: webview.h использует std::thread/std::mutex.
+      - name: Install MinGW-w64 (POSIX threads)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix
+          x86_64-w64-mingw32-g++-posix --version
+      # Публичная сборка без личных значений (как в проверках): пустой build.json.
+      - name: Build web UI
+        run: |
+          mkdir -p config/local dist
+          printf '{}' > config/local/build.json
+          npm ci
+          npm run build
+        working-directory: web
+      - name: Build Preferans.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '1'
+          CC: x86_64-w64-mingw32-gcc-posix
+          CXX: x86_64-w64-mingw32-g++-posix
+        run: |
+          export CGO_CXXFLAGS="-O2 -I$GITHUB_WORKSPACE/native/include"
+          # -tags noai: релиз без встроенного ИИ (как приватные релизы). Уберите для сборки с ИИ.
+          go build -tags noai -buildvcs=false -trimpath \
+            -ldflags '-H windowsgui -extldflags=-static' \
+            -o dist/Preferans.exe ./cmd/preferans
+          ls -l dist/Preferans.exe
+      - name: Check exe (GUI subsystem, no extra DLLs)
+        run: |
+          x86_64-w64-mingw32-objdump -p dist/Preferans.exe > pe.txt
+          grep -E 'Subsystem' pe.txt
+          grep -q 'Windows GUI' pe.txt
+          if grep -Ei 'DLL Name: (libstdc|libgcc|libwinpthread)' pe.txt; then echo 'exe требует лишние DLL'; exit 1; fi
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows
+          path: dist/Preferans.exe
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.x'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build web UI
+        run: |
+          mkdir -p config/local
+          printf '{}' > config/local/build.json
+          npm ci
+          npm run build
+        working-directory: web
+      # Ключ подписи APK. Без постоянного ключа каждый запуск подпишет APK новым случайным debug-ключом,
+      # и установленное приложение не обновится «поверх». Положите base64 вашего ~/.android/debug.keystore
+      # (или отдельного ключа) в секрет репозитория DEBUG_KEYSTORE_B64.
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          mkdir -p ~/.android
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "::warning::Секрет DEBUG_KEYSTORE_B64 не задан: APK будет подписан одноразовым ключом, обновление поверх установленной версии не пройдёт."
+          fi
+      - name: Prepare Android toolchain
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          ls "$ANDROID_HOME/ndk" "$ANDROID_HOME/platforms" || true
+          # compileSdk = 36
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          go build -buildvcs=false -o "$RUNNER_TEMP/bin/gobind" golang.org/x/mobile/cmd/gobind
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Build APK
+        run: |
+          VERSION_NAME="${TAG#v}"
+          VERSION_CODE="$(git log -1 --format=%ct)"
+          mkdir -p android/app/libs dist
+          go tool gomobile bind -tags noai -target android/arm64 -androidapi 26 \
+            -ldflags '-checklinkname=0 -s -w' -o android/app/libs/preferans.aar ./mobile
+          bash android/gradlew -p android -PpreferansAbi=arm64-v8a \
+            "-PpreferansVersionCode=$VERSION_CODE" "-PpreferansVersionName=$VERSION_NAME" \
+            assembleDebug --console=plain
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/Preferans.apk
+          printf '{\n  "versionCode": %s,\n  "versionName": "%s",\n  "apk": "Preferans.apk",\n  "aiEnabled": false\n}\n' \
+            "$VERSION_CODE" "$VERSION_NAME" > dist/version.json
+          cat dist/version.json
+      - uses: actions/upload-artifact@v5
+        with:
+          name: android
+          path: |
+            dist/Preferans.apk
+            dist/version.json
+          if-no-files-found: error
+
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v5
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp LICENSE THIRD_PARTY_NOTICES.md out/
+          (cd docs/licenses && zip -qr ../../out/third-party-licenses.zip .)
+          cd out
+          sha256sum Preferans.exe Preferans.apk version.json LICENSE THIRD_PARTY_NOTICES.md third-party-licenses.zip > SHA256SUMS.txt
+          NOTES="$(git -C .. tag -l --format='%(contents)' "$TAG")"
+          [ -n "$NOTES" ] || NOTES="Версия $TAG для Windows и Android."
+          printf '%s\n\nWindows: Preferans.exe (требуется WebView2 Runtime).\nAndroid: Preferans.apk (Android 8+, ARM64; прямая установка).\n' "$NOTES" > notes.md
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --title "$TAG" --notes-file notes.md \
+            Preferans.exe Preferans.apk version.json LICENSE THIRD_PARTY_NOTICES.md third-party-licenses.zip SHA256SUMS.txt

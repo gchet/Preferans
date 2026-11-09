@@ -48,3 +48,26 @@ pwsh ./scripts/Publish-Release.ps1 -Repository <владелец>/<приват�
 - `-VersionCode`, `-AndroidSdk`, `-Zig` и `-Gradle` при необходимости переопределяют значения сборки.
 - Публикуемый APK использует текущую debug-подпись. Ключ подписи храните отдельно от Git.
 - При сбое загрузки проверьте черновик и файлы в `.build/releases/<тег>` перед повторной публикацией.
+
+## Сборка релиза на GitHub Actions
+
+Workflow `.github/workflows/release.yml` собирает приложения на GitHub и создаёт
+**черновик** Release (публикуйте его вручную после проверки). Запуск — тегом версии
+(`git push origin v2.0.0`) либо вручную: Actions → Release build → Run workflow,
+указав существующий тег.
+
+- Windows: `Preferans.exe` собирается на `ubuntu-latest` кросс-компилятором MinGW-w64
+  (потоки POSIX, статическая линковка, без лишних DLL; без встроенного ИИ — тег `noai`).
+  Шаг проверяет подсистему Windows GUI и отсутствие зависимостей от `libstdc++`,
+  `libgcc` и `libwinpthread`.
+- Android: `Preferans.apk` (ARM64, `versionCode` — время коммита тега) и `version.json`.
+- Во вложения Release добавляются `LICENSE`, `THIRD_PARTY_NOTICES.md`,
+  `third-party-licenses.zip` и `SHA256SUMS.txt`; описание берётся из аннотации тега.
+- Сборка публичная: `config/local/build.json` пустой, личные адреса в неё не попадают.
+- Подпись APK: чтобы приложение обновлялось поверх установленного, положите base64
+  постоянного ключа (например, `~/.android/debug.keystore`) в секрет репозитория
+  `DEBUG_KEYSTORE_B64`. Без секрета workflow выдаёт предупреждение, а APK подписывается
+  одноразовым ключом.
+- Номер версии лежит в файле `VERSION` (сейчас 2.0.0): `build.ps1` берёт его, если не задан `-VersionName`,
+  а workflow проверяет, что тег (`vX.Y.Z`) совпадает с ним.
+- Локально MinGW-w64 подключается параметром `-Mingw <каталог bin>` скрипта `build.ps1` (или `tools.mingw` в `project.local.json`).

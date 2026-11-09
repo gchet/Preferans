@@ -14,6 +14,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.media.MediaScannerConnection
 import android.content.pm.ApplicationInfo
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
@@ -65,8 +67,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         language = getSharedPreferences("interface", MODE_PRIVATE).getString("language", "uk") ?: "uk"
         try {
+            val zone = java.util.TimeZone.getDefault()
+            Mobile.setTimeZone(zone.id, (zone.getOffset(System.currentTimeMillis()) / 1000).toLong())
             Mobile.setSecretCipher(ApiKeyCipher())
-            val url = if (BuildConfig.NETWORK_TEST) Mobile.startNetworkTest(filesDir.absolutePath) else Mobile.start(filesDir.absolutePath)
+            val url = Mobile.start(filesDir.absolutePath)
+            watchNetwork()
             val origin = Uri.parse(url)
             web = WebView(this)
             WebView.setWebContentsDebuggingEnabled((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
@@ -87,17 +92,6 @@ class MainActivity : Activity() {
                             exiting = true
                             finishAndRemoveTask()
                         }
-                    }
-                }
-                @JavascriptInterface fun saveReport(report: String) {
-                    if (!BuildConfig.NETWORK_TEST || report.length > 1048576) return
-                    runOnUiThread {
-                        pendingCode = report
-                        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                            addCategory(Intent.CATEGORY_OPENABLE)
-                            type = "application/json"
-                            putExtra(Intent.EXTRA_TITLE, "preferans-network-report.json")
-                        }, 2)
                     }
                 }
                 @JavascriptInterface fun saveCode(code: String) {
@@ -331,6 +325,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onDestroy() {
+        networkCallback?.let { try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(it) } catch (_: Exception) {} }
         try { unregisterReceiver(screenOffReceiver) } catch (_: IllegalArgumentException) { }
         microphoneRequest?.deny()
         microphoneRequest = null
@@ -370,5 +365,15 @@ class MainActivity : Activity() {
             web.onResume()
             web.evaluateJavascript("window.dispatchEvent(new Event('preferans-voice-resume'))", null)
         }
+        // После блокировки экрана сокеты могли умереть: проверяем соединения и сбрасываем штрафы повторных попыток.
+        Mobile.networkChanged()
+    }
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private fun watchNetwork() {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { Mobile.networkChanged() }
+        }
+        try { cm.registerDefaultNetworkCallback(callback); networkCallback = callback } catch (_: Exception) {}
     }
 }

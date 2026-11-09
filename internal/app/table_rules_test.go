@@ -21,9 +21,6 @@ func TestTableRulesPersistAndReachGuest(t *testing.T) {
 	a.Close()
 	a = New(dir)
 	defer a.Close()
-	if e := a.Configure(nil); e != nil {
-		t.Fatal(e)
-	}
 	if e := a.Create(3, 30, "Host", false); e != nil {
 		t.Fatal(e)
 	}
@@ -32,9 +29,6 @@ func TestTableRulesPersistAndReachGuest(t *testing.T) {
 	}
 	guest := New(t.TempDir())
 	defer guest.Close()
-	if e := guest.Configure(nil); e != nil {
-		t.Fatal(e)
-	}
 	connect(t, a, guest, 1)
 	if !reflect.DeepEqual(guest.Status().View.Rules, r) {
 		t.Fatal("guest rules differ")

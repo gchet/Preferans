@@ -27,15 +27,11 @@ func eventually(t *testing.T, f func() bool) {
 }
 func connect(t *testing.T, host, client *App, seat int) {
 	t.Helper()
-	offer, e := host.Invite(seat)
+	code, e := host.Invite(seat)
 	if e != nil {
 		t.Fatal(e)
 	}
-	answer, e := client.Join(offer)
-	if e != nil {
-		t.Fatal(e)
-	}
-	if e = host.Answer(answer); e != nil {
+	if e = client.Join(code); e != nil {
 		t.Fatal(e)
 	}
 	eventually(t, func() bool { s := client.Status(); return s.View != nil && host.Status().Connected[seat] })
@@ -63,7 +59,6 @@ func TestNetworkPartyAndHostRestore(t *testing.T) {
 			apps := make([]*App, n)
 			for i := range apps {
 				apps[i] = New(filepath.Join(dir, string(rune('0'+i))))
-				_ = apps[i].Configure(nil)
 			}
 			defer func() {
 				for _, a := range apps {
@@ -93,7 +88,6 @@ func TestNetworkPartyAndHostRestore(t *testing.T) {
 			rev := apps[0].Status().View.Revision
 			apps[0].Close()
 			apps[0] = New(filepath.Join(dir, "0"))
-			_ = apps[0].Configure(nil)
 			if e := apps[0].Resume(id); e != nil {
 				t.Fatal(e)
 			}

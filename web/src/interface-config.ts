@@ -1,6 +1,5 @@
 import settings from '../../config/interface.json' with {type:'json'};
-import {networkConfig} from './network-config';
-export const interfaceConfig = {...settings, roomServiceURL: networkConfig.roomServiceURL ?? settings.roomServiceURL};
+export const interfaceConfig = {...settings};
 document.documentElement.style.setProperty('--ready-attention-duration',`${settings.readyAttentionDurationMs}ms`);
 for(const [name,value] of Object.entries({
   'mini-card-size': settings.miniCardSizePx,

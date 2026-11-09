@@ -80,7 +80,7 @@ func (a *App) routeVoiceLocked(m VoiceMessage) error {
 		if seat == m.From || (m.To != -1 && m.To != seat) || !a.voiceHumanLocked(seat) || !link.Auth || seat >= len(a.connected) || !a.connected[seat] {
 			continue
 		}
-		if err := link.Peer.Send(Packet{Type: "voice", Voice: &m}); err != nil {
+		if err := link.send(Packet{Type: "voice", Voice: &m}); err != nil {
 			return err
 		}
 	}
@@ -129,7 +129,7 @@ func (a *App) SendVoice(m VoiceMessage) error {
 		return a.routeVoiceLocked(m)
 	}
 	if l := a.peers[0]; l != nil && l.Status == "connected" {
-		return l.Peer.Send(Packet{Type: "voice", Voice: &m})
+		return l.send(Packet{Type: "voice", Voice: &m})
 	}
 	return locales.Errorf("go.internal.app.voice.text005")
 }

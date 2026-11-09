@@ -29,7 +29,7 @@ func TestLocalRoomWithoutNetworkAndRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		st := a.Status()
-		if !st.RoomLocal || !st.RoomOnline || st.ConnectionSetup || st.AIEnabled || len(st.Room.Members) != 1 {
+		if !st.RoomLocal || !st.RoomOnline || st.AIEnabled || len(st.Room.Members) != 1 {
 			t.Fatalf("local status: %+v", st)
 		}
 		for i, p := range st.View.Players {
@@ -128,7 +128,7 @@ func TestLocalOnlyPreferenceSurvivesRestart(t *testing.T) {
 	a.Close()
 	a = New(dir)
 	defer a.Close()
-	if !a.Status().RoomLocal || a.Status().ConnectionSetup {
+	if !a.Status().RoomLocal {
 		t.Fatal("local preference did not bypass network setup")
 	}
 	p = a.Status().Appearance

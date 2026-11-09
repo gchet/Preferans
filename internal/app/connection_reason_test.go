@@ -43,15 +43,12 @@ func TestGracefulExitAndReconnect(t *testing.T) {
 	host, client := New(t.TempDir()), New(clientDir)
 	defer host.Close()
 	defer client.Close()
-	_ = host.Configure(nil)
-	_ = client.Configure(nil)
 	if err := host.Create(3, 30, "Host", false); err != nil {
 		t.Fatal(err)
 	}
 	connect(t, host, client, 1)
 	observer := New(t.TempDir())
 	defer observer.Close()
-	_ = observer.Configure(nil)
 	connect(t, host, observer, 2)
 	client.Close()
 	eventually(t, func() bool { return host.Status().ConnectionReasons[1] == "exited" })
@@ -61,7 +58,6 @@ func TestGracefulExitAndReconnect(t *testing.T) {
 	}
 	other := New(clientDir)
 	defer other.Close()
-	_ = other.Configure(nil)
 	connect(t, host, other, 1)
 	if got := host.Status().ConnectionReasons[1]; got != "" {
 		t.Fatal("reconnection did not clear reason", got)
@@ -74,8 +70,6 @@ func TestAbortedTransportReportsLoss(t *testing.T) {
 	host, client := New(t.TempDir()), New(t.TempDir())
 	defer host.Close()
 	defer client.Close()
-	_ = host.Configure(nil)
-	_ = client.Configure(nil)
 	if err := host.Create(3, 30, "Host", false); err != nil {
 		t.Fatal(err)
 	}

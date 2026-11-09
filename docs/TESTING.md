@@ -5,7 +5,7 @@
 
 ~~~powershell
 ./build.ps1 -Target Test
-go vet ./config ./internal/... ./cmd/signaling ./mobile ./netcheck
+go vet ./config ./internal/... ./cmd/signaling ./mobile
 go test -tags noai ./internal/app -run TestNoAI -count=1
 cd web
 npm ci

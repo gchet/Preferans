@@ -46,8 +46,6 @@ func TestGuestLeaveRetainsSeatAndSave(t *testing.T) {
 	host, guest := New(t.TempDir()), New(t.TempDir())
 	defer host.Close()
 	defer guest.Close()
-	_ = host.Configure(nil)
-	_ = guest.Configure(nil)
 	if err := host.Create(3, 30, "Host", false); err != nil {
 		t.Fatal(err)
 	}

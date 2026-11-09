@@ -11,11 +11,6 @@ func TestVoiceRoutesOnlyAuthenticatedHumans(t *testing.T) {
 	defer host.Close()
 	defer one.Close()
 	defer two.Close()
-	for _, a := range []*App{host, one, two} {
-		if err := a.Configure(nil); err != nil {
-			t.Fatal(err)
-		}
-	}
 	if err := host.Create(4, 30, "Host", false); err != nil {
 		t.Fatal(err)
 	}

@@ -31,24 +31,6 @@ import {RoomUI,roomVoice,type RoomStatus} from './rooms';
 import './rooms.css';
 import './exit-app';
 import {buttonPressActive} from './button-feedback';
-import {setupScreen, setupServers, enhanceConnectionSettings, settingsServers} from './connection-setup';
-document.addEventListener('click', e=>{
-  const button=(e.target as Element).closest<HTMLButtonElement>('#verify-turn');
-  if(!button)return;
-  void run(async()=>{
-    const result=$('#turn-check-result');
-    result.textContent=t("web.main.text283");button.disabled=true;
-    try {
-      await rpc('connection-setup',{stun:settingsServers($('#settings-form'))});
-      result.textContent=t("web.main.text282");
-      const input=document.querySelector<HTMLInputElement>('[name="turn-password"]')!;
-      const servers=settingsServers($('#settings-form'));
-      document.querySelector<HTMLTextAreaElement>('[name="stun"]')!.value=servers.filter(s=>s.startsWith('turn:')||s.startsWith('turns:')).join('\n');
-      input.defaultValue=input.value;
-    } catch(error) {result.textContent=error instanceof Error?error.message:String(error);throw error;}
-    finally{button.disabled=false;}
-  });
-});
 
 interface Contract {
   noTalon?: boolean;
@@ -134,7 +116,6 @@ interface View {
 interface Status extends RoomStatus {
   aiReview?: AIReview;
   aiEnabled?: boolean;
-  connectionSetup?: boolean;
   logPath?: string;
   logSize?: number;
   logPathOverride?: boolean;
@@ -146,7 +127,6 @@ interface Status extends RoomStatus {
   paused: boolean;
   error: string;
   host: boolean;
-  stun: string[];
   links: Record<string, string>;
   connectionReasons?: Record<string,string>;
   logs?: string[];
@@ -186,7 +166,6 @@ let status: Status = {
   error: "",
   host: false,
   current: false,
-  stun: [],
   links: {},
 };
 let selected: number[] = [];
@@ -195,13 +174,6 @@ let previous = "";
 let startWaitingTable = '';
 let busy = false;
 let lastError = "";
-let pendingConnection: {table: string; seat: number} | null = null;
-let signalingBusy = false;
-let autoJoining = false;
-let signalingTrace: string[] = [];
-let lastSignalingTrace = "";
-let submittedOfferCode = "";
-let submittedOfferAt = 0;
 let pendingUpdateURL = "";
 let autoUpdateChecked = false;
 type NativeUpdateCallback = (ok: boolean, payload: string) => void;
@@ -235,71 +207,6 @@ function requestNativeUpdateManifest(base: URL): Promise<string> {
       reject(e);
     }
   });
-}
-const signalingURL = networkConfig.legacySignalingURL;
-function traceSignaling(message: string) {
-  const line = `${new Date().toLocaleTimeString(locale)}  signaling: ${message}`;
-  if (message === lastSignalingTrace) return;
-  lastSignalingTrace = message;
-  signalingTrace.push(line);
-  if (signalingTrace.length > 80) signalingTrace = signalingTrace.slice(-80);
-  renderConnectionLog();
-}
-async function signalingRequest(method: "GET"|"POST", body?: unknown) {
-  if (!signalingURL) throw Error(t('web.connection.server_required'));
-  const target = method === "GET" ? `${signalingURL}?t=${Date.now()}` : signalingURL;
-  traceSignaling(`${method} ${signalingURL}`);
-  try {
-    const r = await fetch(target, {method, cache: "no-store", headers: body ? {"Content-Type":"application/json"} : undefined, body: body ? JSON.stringify(body) : undefined});
-    if (!r.ok) throw Error(`HTTP ${r.status}`);
-    const result = r.status === 204 ? null : await r.json();
-    traceSignaling(`${t("web.main.text279", {p0: method})}`);
-    return result;
-  } catch (e) {
-    traceSignaling(`${t("web.main.text278", {p0: method, p1: e instanceof Error ? e.message : String(e)})}`);
-    throw e;
-  }
-}
-function normalizeSignaling(raw: any) {
-  return { offer: raw?.offer || raw?.Offer, answer: raw?.answer || raw?.Answer } as {offer?: {code?: string; seat?: number; name?: string}; answer?: {code?: string; seat?: number}};
-}
-async function autoConnect() {
-  if(status.roomMode)return;
-  if (signalingBusy || (!status.host && !autoJoining)) return;
-  signalingBusy = true;
-  const v = status.view;
-  try {
-    const current = normalizeSignaling(await signalingRequest("GET"));
-    if (!status.host && !autoJoining) return;
-    if (status.host && v) {
-      traceSignaling(`${t("web.main.text277", {p0: current.offer?.code ? t("web.main.text276") : t("web.main.text275"), p1: current.answer?.code ? t("web.main.text276") : t("web.main.text275")})}`);
-      if (current.offer?.code && typeof current.offer.seat === "number" && current.offer.seat > 0 && !status.connected?.[current.offer.seat] && current.answer?.code && current.answer.seat === current.offer.seat) {
-        try {
-          await rpc("answer", {code: current.answer.code});
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
-          if (!message.includes(t("web.main.text274")) && !message.includes(t("web.main.text273"))) throw e;
-          traceSignaling(t("web.main.text272"));
-        } finally {
-          await signalingRequest("POST",{kind:"clear"});
-        }
-      } else if (!current.offer?.code && v.players.length > 1) {
-        const seat = v.players.findIndex((p,i) => i > 0 && !p.bot && !status.connected?.[i]);
-        const linkState = seat > 0 ? status.links[String(seat)] : "";
-        const inProgress = ["gathering", "waiting-answer", "connecting", "authenticating", "connected"].includes(linkState);
-        if (seat > 0 && !inProgress) { const code = await rpc("invite", {seat}); await signalingRequest("POST",{kind:"offer",code,seat,name:v.players[0].name}); }
-      }
-    } else if (autoJoining && !v && current.offer?.code && current.offer.seat && (current.offer.code !== submittedOfferCode || Date.now() - submittedOfferAt > 15000)) {
-      if (["gathering", "connecting", "authenticating", "connected"].includes(status.links['0']) && Date.now()-submittedOfferAt < 45000) return;
-      traceSignaling(`${t("web.main.text271", {p0: current.offer.seat + 1})}`);
-      submittedOfferCode = current.offer.code; submittedOfferAt = Date.now(); const answer = await rpc<string>("join",{code:current.offer.code}); await signalingRequest("POST",{kind:"answer",code:answer,seat:current.offer.seat});
-    } else if (!v && !current.offer?.code) {
-      if (!["gathering", "connecting", "authenticating", "connected"].includes(status.links['0'])) submittedOfferCode = "";
-    } else if (!v) {
-      traceSignaling(t("web.main.text270"));
-    }
-  } catch (e) { traceSignaling(`${t("web.main.text269", {p0: e instanceof Error ? e.message : String(e)})}`); }
-  finally { signalingBusy = false; }
 }
 let currentPanel = "";
 const safeJoin = (value: string[] | null | undefined, separator = "\n") =>
@@ -437,7 +344,6 @@ function syncAISettingsTab() {
 }
 function notice(s: string) {
   clearTimeout(noticeTimer);
-  pendingConnection = null;
   const panel = $<HTMLDialogElement>('#panel');
   (panel.open ? panel : document.body).append($('#notice'));
   $("#notice").textContent = s;
@@ -722,11 +628,6 @@ function updateCreateLimit(r = appearance.tableRules || defaultRules, target = a
   form.querySelector<HTMLInputElement>('[name="minutes"]')!.value = String(r.minutes);
 }
   function renderStart() {
-  if(status.roomMode && status.connectionSetup && !status.room){
-    if(!document.querySelector('#connection-setup'))$('#app').innerHTML=setupScreen(appearance.name || t("web.main.text001"), appearance.roomServiceURL || interfaceConfig.roomServiceURL);
-    if(!document.querySelector('#connection-setup [data-room-action="local"]'))$('#connection-setup').insertAdjacentHTML('beforeend',`<button type="button" data-room-action="local">${t('web.local.play')}</button>`);
-    return;
-  }
   if(status.roomMode&&!status.room){roomUI.picker($("#app"));return;}
   if ($("#create-form")) return;
     const savedName = appearance.name || t("web.main.text001");
@@ -821,7 +722,6 @@ installDebugBotMenu(seat=>{
 let shownAIReview="";
 function showPanel(kind: string, historyView?: View, botSeat?: number) {
  if(status.aiEnabled === false && ["ai-review","bot-models"].includes(kind)) return;
-  status.stun = status.stun || [];
   currentPanel = kind;
   const panel = $<HTMLDialogElement>("#panel");
   panel.dataset.kind = kind;
@@ -859,13 +759,13 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
   if (kind === "rules") $("#panel-body").innerHTML = rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), false, true) + rulesHTML;
   if (kind === "settings")
     $("#panel-body").innerHTML =
-      `<div class="settings-tabs" role="tablist" aria-label="${t("web.main.text080")}">${[["game",t("web.main.text078")],["cards",t("web.main.text077")],["connection",t("web.main.text076")],["ai",t("web.ai.tab")]].map(([id,label]) => `<button type="button" role="tab" id="settings-tab-${id}" data-settings-tab="${id}" aria-controls="settings-${id}" aria-selected="${id === "game"}">${label}</button>`).join("")}</div><form id="settings-form"><section id="settings-game" role="tabpanel" aria-labelledby="settings-tab-game"></section><section id="settings-cards" role="tabpanel" aria-labelledby="settings-tab-cards" hidden><h3>${t("web.main.text077")}</h3><div class="deck-options">${decks.map(([id, name]) => `<div class="deck-choice"><label class="deck-option"><input type="radio" name="deck" value="${id}" ${appearance.deck === id ? "checked" : ""}><span class="deck-thumb card" data-deck-thumb="${id}">${face(6, id)}</span><strong>${name}</strong></label><label class="check"><input type="checkbox" name="frame-${id}" ${appearance.cardFrames?.[id] !== false ? "checked" : ""}>${t("web.main.text079")}</label></div>`).join("")}</div><div id="deck-preview" class="deck-preview" aria-label="${t("web.main.text081")}"></div><h3>${t("web.main.text082")}</h3><div class="back-options">${backs.map(([id,name]) => `<label class="deck-option"><input type="radio" name="back" value="${id}" ${(appearance.back || "plaid") === id ? "checked" : ""}><span class="card-back back-preview" data-back="${id}"></span><strong>${name}</strong></label>`).join("")}</div></section><section id="settings-connection" role="tabpanel" aria-labelledby="settings-tab-connection" hidden><label>${t("web.main.text083")}<textarea name="stun" rows="4" placeholder="${t("web.main.text084")}">${esc(status.stun.filter(u => u.startsWith("turn:") || u.startsWith("turns:")).join("\n"))}</textarea></label><p>${t("web.main.text085")}</p><details><summary>${t("web.main.text086")}</summary><textarea name="stun-fallback" rows="3">${esc(status.stun.filter(u => u.startsWith("stun:")).join("\n"))}</textarea><p>${t("web.main.text087")}</p></details><label class="check"><input type="checkbox" name="log-enabled" ${!appearance.logDisabled ? "checked" : ""}>${t("web.main.text088")}</label><p class="muted">${t("web.main.text089")} <code>-c</code> ${t("web.main.text090")} <code>--config</code>.</p><h3>${t("web.main.text091")}</h3><label>${t("web.main.text092")}<input name="update-url" type="url" value="${esc(appearance.updateURL || "")}" placeholder="${esc(networkConfig.updateAddressHint)}"></label><p class="muted">${t("web.main.text093")}</p><button type="button" id="check-update">${t("web.main.text094")}</button><div id="update-result" class="muted" role="status"></div></section><section id="settings-ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden></section><button class="primary">${t("web.main.text095")}</button></form><hr><button id="leave">${t("web.main.text096")}</button><p class="muted">${t("web.main.text097")}</p>`;
+      `<div class="settings-tabs" role="tablist" aria-label="${t("web.main.text080")}">${[["game",t("web.main.text078")],["cards",t("web.main.text077")],["connection",t("web.main.text076")],["ai",t("web.ai.tab")]].map(([id,label]) => `<button type="button" role="tab" id="settings-tab-${id}" data-settings-tab="${id}" aria-controls="settings-${id}" aria-selected="${id === "game"}">${label}</button>`).join("")}</div><form id="settings-form"><section id="settings-game" role="tabpanel" aria-labelledby="settings-tab-game"></section><section id="settings-cards" role="tabpanel" aria-labelledby="settings-tab-cards" hidden><h3>${t("web.main.text077")}</h3><div class="deck-options">${decks.map(([id, name]) => `<div class="deck-choice"><label class="deck-option"><input type="radio" name="deck" value="${id}" ${appearance.deck === id ? "checked" : ""}><span class="deck-thumb card" data-deck-thumb="${id}">${face(6, id)}</span><strong>${name}</strong></label><label class="check"><input type="checkbox" name="frame-${id}" ${appearance.cardFrames?.[id] !== false ? "checked" : ""}>${t("web.main.text079")}</label></div>`).join("")}</div><div id="deck-preview" class="deck-preview" aria-label="${t("web.main.text081")}"></div><h3>${t("web.main.text082")}</h3><div class="back-options">${backs.map(([id,name]) => `<label class="deck-option"><input type="radio" name="back" value="${id}" ${(appearance.back || "plaid") === id ? "checked" : ""}><span class="card-back back-preview" data-back="${id}"></span><strong>${name}</strong></label>`).join("")}</div></section><section id="settings-connection" role="tabpanel" aria-labelledby="settings-tab-connection" hidden><div id="service-block" hidden><h3>${t("web.connection.service_title")}</h3><p class="muted">${t("web.connection.service_help")}</p><label>${t("web.connection.service_mine")}<input id="service-code-mine" readonly spellcheck="false" placeholder="${t("web.connection.service_loading")}"></label><button type="button" id="copy-service-code">${t("web.connection.service_copy")}</button><label>${t("web.connection.service_other")}<input name="room-service-url" spellcheck="false" autocomplete="off" value="${esc(appearance.roomServiceURL || "")}" placeholder="PREF2.…"></label><p class="muted">${t("web.connection.service_other_help")}</p></div><h3>${t("web.connection.ntfy_title")}</h3><label>${t("web.connection.ntfy_label")}<input name="ntfy-servers" spellcheck="false" autocomplete="off" value="${esc(appearance.ntfyServers || "")}" placeholder="https://ntfy.sh"></label><p class="muted">${t("web.connection.ntfy_help")}</p><label class="check"><input type="checkbox" name="log-enabled" ${!appearance.logDisabled ? "checked" : ""}>${t("web.main.text088")}</label><p class="muted">${t("web.main.text089")} <code>-c</code> ${t("web.main.text090")} <code>--config</code>.</p>${window.PreferansAndroid ? `<h3>${t("web.main.text091")}</h3><label>${t("web.main.text092")}<input name="update-url" type="url" value="${esc(appearance.updateURL || "")}" placeholder="${esc(networkConfig.updateAddressHint)}"></label><p class="muted">${t("web.main.text093")}</p><button type="button" id="check-update">${t("web.main.text094")}</button><div id="update-result" class="muted" role="status"></div>` : ""}</section><section id="settings-ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden></section><button class="primary">${t("web.main.text095")}</button></form><hr><button id="leave">${t("web.main.text096")}</button><p class="muted">${t("web.main.text097")}</p>`;
   if (kind === "settings") {
     setupUpdateAddressHint();
     if(status.aiEnabled !== false) void aiUI.mount($("#settings-ai"), appearance.updateURL || "",!!appearance.debug);
     else { document.querySelector("#settings-tab-ai")?.remove(); document.querySelector("#settings-ai")?.remove(); }
-    enhanceConnectionSettings(status.stun);
-    document.querySelector('#settings-connection')!.insertAdjacentHTML('afterbegin', `<label>${t("web.connection.room_service")}<input name="room-service-url" type="url" value="${esc(appearance.roomServiceURL || interfaceConfig.roomServiceURL)}" placeholder="https://signaling.example.org/v2/rooms"></label>`);
+    // Публичное лобби выбирает сервис комнат автоматически: поля кода скрыты (#service-block), код не загружаем.
+    // setupServiceCode();
     const logLabel = document.querySelector<HTMLInputElement>('[name="log-enabled"]')!.closest('label')!;
     const logHelp = logLabel.nextElementSibling!;
     if (window.PreferansAndroid) {
@@ -892,7 +792,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
   }
   if (kind === "network")
     $("#panel-body").innerHTML =
-      `<p>${autoJoining ? t("web.main.text055") : t("web.main.text054")}</p>${status.host && v ? `<div class="connection-list">${v.players.map((p, i) => (i === 0 || p.bot ? "" : `<div><strong>${esc(p.name)}</strong><span>${status.connected?.[i] ? t("web.main.text058") : esc(status.links[i] || t("web.main.text057"))}</span></div>`)).join("")}</div>` : `<p class="connection-waiting">${t("web.main.text056")}</p>`}<details open class="connection-log"><summary>${t("web.main.text059")}</summary><button type="button" id="copy-connection-log">${t("web.main.text060")}</button><button type="button" id="save-connection-log">${t("web.main.text061")}</button><pre id="connection-log-text"></pre></details><p class="muted">${t("web.main.text062")}</p>`;
+      `<p>${t("web.main.text054")}</p>${status.host && v ? `<div class="connection-list">${v.players.map((p, i) => (i === 0 || p.bot ? "" : `<div><strong>${esc(p.name)}</strong><span>${status.connected?.[i] ? t("web.main.text058") : esc(status.links[i] || t("web.main.text057"))}</span></div>`)).join("")}</div>` : `<p class="connection-waiting">${t("web.main.text056")}</p>`}<details open class="connection-log"><summary>${t("web.main.text059")}</summary><button type="button" id="copy-connection-log">${t("web.main.text060")}</button><button type="button" id="save-connection-log">${t("web.main.text061")}</button><pre id="connection-log-text"></pre></details><p class="muted">${t("web.main.text062")}</p>`;
   if (kind === "network") renderConnectionLog();
   if (kind === "score") {
     $("#panel-body").innerHTML = v
@@ -916,8 +816,13 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
 function renderConnectionLog() {
   const el = document.querySelector<HTMLElement>("#connection-log-text");
   if (!el) return;
-  el.textContent = [...(status.logs || []), ...signalingTrace].join("\n") || t("web.main.text044");
+  el.textContent = (status.logs || []).join("\n") || t("web.main.text044");
   el.scrollTop = el.scrollHeight;
+}
+function setupServiceCode() {
+  const input = document.querySelector<HTMLInputElement>('#service-code-mine');
+  if (!input) return;
+  rpc<string>('service-code').then(code => { input.value = code; }).catch(e => { input.value = ''; input.placeholder = e instanceof Error ? e.message : String(e); });
 }
 function setupUpdateAddressHint() {
   const input = document.querySelector<HTMLInputElement>('[name="update-url"]');
@@ -1030,17 +935,11 @@ async function run(fn: () => Promise<void>) {
     document.body.classList.remove("busy");
   }
 }
-function output(code: string) {
-  $("#output-wrap").hidden = false;
-  $<HTMLTextAreaElement>("#output-code").value = code;
-  notice(t("web.main.text030"));
-}
 async function finishParty() {
   await rpc("leave");
   const panel = document.querySelector<HTMLDialogElement>("#panel");
   if (panel?.open) panel.close();
   currentPanel = "";
-  autoJoining = false;
   selected = [];
   status.view = null;
   status.current = false;
@@ -1075,20 +974,13 @@ document.addEventListener("click", (e) => {
     showPanel(b.dataset.panel,undefined,b.dataset.botSeat===undefined ? undefined : Number(b.dataset.botSeat));
     return;
   }
-  if (b.dataset.autoJoin !== undefined) {
-    void run(async () => {
-      const name = document.querySelector<HTMLInputElement>('#create-form [name="name"]')?.value.trim() || appearance.name || t("web.main.text001");
-      await rpc("profile", {name});
-      appearance.name = name;
-      autoJoining = true;
-      notice(t("web.main.text029"));
-      showPanel("network");
-      await autoConnect();
-    });
+  if (b.id === "copy-service-code") {
+    const value = document.querySelector<HTMLInputElement>('#service-code-mine')?.value || '';
+    if (value) void navigator.clipboard?.writeText(value).then(() => notice(t("web.main.text013")));
     return;
   }
   if (b.id === "copy-connection-log") {
-    const text = [...(status.logs || []), ...signalingTrace].join("\n");
+    const text = (status.logs || []).join("\n");
     void navigator.clipboard?.writeText(text).then(() => notice(t("web.main.text028")));
     return;
   }
@@ -1101,7 +993,7 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (b.id === "save-connection-log") {
-    const log = [...(status.logs || []), ...signalingTrace].join("\n");
+    const log = (status.logs || []).join("\n");
     if (window.PreferansAndroid) {
       window.PreferansAndroid.saveLog(log);
     } else {
@@ -1221,53 +1113,6 @@ document.addEventListener("click", (e) => {
       previous = "";
       $("#app").innerHTML = "";
     });
-  if (b.dataset.invite)
-    void run(async () => {
-      notice(t("web.main.text015"));
-      output(await rpc<string>("invite", { seat: Number(b.dataset.invite) }));
-    });
-  if (b.id === "join")
-    void run(async () => {
-      notice(t("web.main.text015"));
-      output(
-        await rpc<string>("join", {
-          code: $<HTMLTextAreaElement>("#input-code").value,
-        }),
-      );
-    });
-  if (b.id === "accept-answer")
-    void run(async () => {
-      const result = await rpc<{seat:number}>("answer", {
-        code: $<HTMLTextAreaElement>("#input-code").value,
-      });
-      notice(t("web.main.text014"));
-      pendingConnection = {table: status.view!.id, seat: result.seat};
-    });
-  if (b.id === "copy-code")
-    void run(async () => {
-      const el = $<HTMLTextAreaElement>("#output-code");
-      try {
-        await navigator.clipboard.writeText(el.value);
-      } catch {
-        el.select();
-        document.execCommand("copy");
-      }
-      notice(t("web.main.text013"));
-    });
-  if (b.id === "download-code") {
-    const code = $<HTMLTextAreaElement>("#output-code").value;
-    if (window.PreferansAndroid) {
-      window.PreferansAndroid.saveCode(code);
-    } else {
-      const blob = new Blob([code], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "preferans-code.txt";
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
-  }
   if (b.id === "leave" || b.id === "finish-party" || b.id === "finish-party-topbar")
     void run(finishParty);
 });
@@ -1275,33 +1120,8 @@ document.addEventListener("submit", (e) => {
   e.preventDefault();
   const f = e.target as HTMLFormElement;
   const d = new FormData(f);
-  if(f.id==='connection-setup-form') void run(async()=>{
-    const result=$('#setup-result');
-    result.textContent=t("web.main.text012");
-    f.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled=true;
-    try {
-      await rpc('room-service',{url:String(d.get('room-service-url'))});
-      await rpc('connection-setup',{name:String(d.get('name')),stun:setupServers(d)});
-      previous='';
-      notice(t("web.main.text011"));
-    } catch(error) {result.textContent=error instanceof Error?error.message:String(error);throw error;}
-    finally {f.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled=false;}
-  });
   if (f.id === "create-form")
     void run(async () => {
-      if(!status.roomMode) try {
-        const active = normalizeSignaling(await signalingRequest("GET"));
-        if (active.offer?.code) {
-          const requestedName = String(d.get("name") || t("web.main.text001")).trim();
-          if (active.offer.name && active.offer.name === requestedName) {
-            await signalingRequest("POST", {kind: "clear"});
-          } else {
-            throw Error(`${t("web.main.text010", {p0: active.offer.name || t("web.main.text009")})}`);
-          }
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message.startsWith(t("web.main.text008"))) throw e;
-      }
       await rpc("profile", { name: String(d.get("name") || t("web.main.text001")) });
       if (appearance.tableRules?.endCondition === 'time') {
         const minutes = Number(d.get('minutes'));
@@ -1320,10 +1140,8 @@ document.addEventListener("submit", (e) => {
   if (f.id === "settings-form")
     void run(async () => {
       if(status.aiEnabled !== false) await aiUI.save();
-      const roomURL=String(d.get('room-service-url') || '').trim();
-      if(roomURL!==(appearance.roomServiceURL || interfaceConfig.roomServiceURL))await rpc('room-service',{url:roomURL});
-      const servers=settingsServers(f);
-      if(JSON.stringify(servers)!==JSON.stringify(status.stun))await rpc('connection-setup',{stun:servers});
+      const serviceCode=String(d.get('room-service-url') || '').trim();
+      if(serviceCode!==(appearance.roomServiceURL || ''))await rpc('room-service',{url:serviceCode});
       const editable = !status.view || (status.host && status.view.stage === 'lobby');
       const tableRules = editable ? readRules(d) : appearance.tableRules;
       const target = Number(d.get('rule-target'));
@@ -1348,7 +1166,8 @@ document.addEventListener("submit", (e) => {
           back: String(d.get("back") || "plaid"),
           logDisabled: !d.has("log-enabled"),
           logPath: String(d.get('log-path') ?? appearance.logPath ?? '').trim(),
-          updateURL: String(d.get("update-url") || "").trim(),
+          updateURL: String(d.get("update-url") ?? appearance.updateURL ?? "").trim(),
+          ntfyServers: String(d.get("ntfy-servers") || "").trim(),
           defaultRoom: String(d.get('default-room') ?? appearance.defaultRoom ?? ''),
         },
       });
@@ -1394,11 +1213,6 @@ document.addEventListener("change", (e) => {
     form.querySelector<HTMLSelectElement>('[name="rule-minutes"]')!.hidden = !timed;
   }
   if (el.name === "deck" || el.name.startsWith("frame-")) previewDeck();
-  if (el.id === "code-file" && el.files?.[0])
-    void run(async () => {
-      if (el.files![0].size > 131072) throw Error(t("web.main.text005"));
-      $<HTMLTextAreaElement>("#input-code").value = await el.files![0].text();
-    });
 });
 function updateExitButtons() {
   for (const button of document.querySelectorAll<HTMLButtonElement>('#finish-party, #finish-party-topbar, #leave')) {
@@ -1419,7 +1233,6 @@ async function refreshState() {
   else void prepareCards(s.appearance);
   // Keep the actual button under the finger until the native click is dispatched.
   if(buttonPressActive())return;
-  if (pendingConnection && (s.view?.id !== pendingConnection.table || s.connected[pendingConnection.seat])) notice('');
   const key = JSON.stringify([
     s.view?.id,
     s.view?.revision,
@@ -1439,7 +1252,6 @@ async function refreshState() {
     s.roomMode,
     s.roomLocal,
     s.aiEnabled,
-    s.connectionSetup,
   ]);
   if (s.error && s.error !== lastError) notice(s.error);
   lastError = s.error;
@@ -1485,16 +1297,6 @@ async function refreshState() {
     autoUpdateChecked = true;
     void checkForUpdate(true);
   }
-  if (autoJoining && !s.host && s.view && s.connected?.[s.view.seat]) {
-    autoJoining = false;
-    const connectionPanel = $<HTMLDialogElement>("#panel");
-    if (connectionPanel.open && currentPanel === "network") {
-      connectionPanel.close();
-      currentPanel = "";
-    }
-    notice("");
-  }
-  void autoConnect();
 }
 
 const cancelCardDrag = cardDrag(() => {

@@ -8,7 +8,6 @@ val copySharedLocales by tasks.registering(Sync::class) {
     from(sharedLocales) { include("*.json"); into("locales") }
     into(generatedLocaleAssets)
 }
-val networkTest = providers.gradleProperty("networkTest").getOrElse("false").toBoolean()
 val preferansVersionCode = providers.gradleProperty("preferansVersionCode").getOrElse("1").toInt()
 val preferansVersionName = providers.gradleProperty("preferansVersionName").getOrElse("0.1.0")
 android {
@@ -17,9 +16,7 @@ android {
     compileSdk = 36
     defaultConfig {
         applicationId = "com.preferans.game"
-        if (networkTest) { applicationId = "com.preferans.netcheck" }
-        buildConfigField("boolean", "NETWORK_TEST", networkTest.toString())
-        resValue("string", "app_name", russianMessages[if (networkTest) "android.app.network_name" else "android.app.name"] as String)
+        resValue("string", "app_name", russianMessages["android.app.name"] as String)
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 36

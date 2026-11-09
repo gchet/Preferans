@@ -76,8 +76,6 @@ func TestHostAICapabilityTravelsWithTableView(t *testing.T) {
 	host, client := New(t.TempDir()), New(t.TempDir())
 	defer host.Close()
 	defer client.Close()
-	_ = host.Configure(nil)
-	_ = client.Configure(nil)
 	if err := host.Create(3, 30, "Host", false); err != nil {
 		t.Fatal(err)
 	}

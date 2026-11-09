@@ -35,7 +35,6 @@
     "miniCardSizePx": "Размер маленьких вспомогательных карт.",
     "miniCardFontSizePx": "Размер символа масти на маленькой карте.",
     "miniCardRankSizePx": "Размер достоинства на маленькой карте.",
-    "roomServiceURL": "Адрес сигналинг-сервера комнат; это не адрес TURN.",
     "roomRequestTimeoutMs": "Лимит ожидания ответа сервера комнат.",
     "roomPollIntervalMs": "Интервал опроса комнаты.",
     "partyCatalogIntervalMs": "Интервал обновления каталога партий.",
@@ -84,7 +83,6 @@
   "miniCardSizePx": 38,
   "miniCardFontSizePx": 17,
   "miniCardRankSizePx": 16,
-  "roomServiceURL": "",
   "roomRequestTimeoutMs": 8000,
   "roomPollIntervalMs": 1000,
   "partyCatalogIntervalMs": 10000,
@@ -94,6 +92,6 @@
   "connectionSilenceTimeoutMs": 6000,
   "reconnectRetryMs": 2000,
   "handshakeRetryMs": 50000,
-  "answerRetryMs": 35000,
+  "answerRetryMs": 12000,
   "exitNoticeTimeoutMs": 350
 }

@@ -11,8 +11,6 @@ func TestJoiningUsesSavedPlayerName(t *testing.T) {
 	defer host.Close()
 	dir := filepath.Join(t.TempDir(), "guest")
 	client := New(dir)
-	_ = host.Configure(nil)
-	_ = client.Configure(nil)
 	if err := host.Create(3, 30, "Ведущий", false); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +35,6 @@ func TestJoiningUsesSavedPlayerName(t *testing.T) {
 	eventually(t, func() bool { return !host.Status().Connected[1] })
 	client = New(dir)
 	defer client.Close()
-	_ = client.Configure(nil)
 	if client.Status().Appearance.Name != "Игорь новый" {
 		t.Fatal("profile name lost on restart")
 	}

@@ -25,7 +25,8 @@ export class VoiceChat {
   private after = 0;
   private peers = new Map<number, Remote>();
   private connected: boolean[] = [];
-  private servers: RTCIceServer[] = [];
+  // Голос идёт браузерным WebRTC: только публичные STUN-серверы, без TURN.
+  private readonly servers: RTCIceServer[] = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun.cloudflare.com:3478'}];
   private stream?: MediaStream;
   private busy = false;
   private micBusy = false;
@@ -79,7 +80,7 @@ export class VoiceChat {
     });
     window.addEventListener('pagehide', () => { this.stop(); clearInterval(this.timer); });
   }
-  sync(status: {view: Room | null; connected: boolean[]; stun: string[]}) {
+  sync(status: {view: Room | null; connected: boolean[]}) {
     const room = status.view;
     if (room?.id !== this.room?.id || room?.seat !== this.room?.seat) {
       this.stop();
@@ -90,10 +91,6 @@ export class VoiceChat {
     }
     this.room = room;
     this.connected = status.connected || [];
-    this.servers = (status.stun || []).map(entry => {
-      const [urls, username, credential] = entry.split('|');
-      return {urls, ...(username ? {username, credential} : {})};
-    });
     if (this.resumeMic && room && (room.id !== this.resumeMic.roomId || room.seat !== this.resumeMic.seat)) this.resumeMic = undefined;
     if (this.resumeMic && room?.id === this.resumeMic.roomId && room.seat === this.resumeMic.seat) {
       this.resumeMic = undefined;
@@ -176,10 +173,7 @@ export class VoiceChat {
     }
   }
   private create(seat: number, peer: Remote) {
-    const turns = this.servers.filter(s => String(s.urls).startsWith('turn'));
-    // TURN first; the next attempt includes STUN/direct candidates.
-    const relay = turns.length > 0 && peer.attempts < 2;
-    const pc = new RTCPeerConnection({iceServers:relay ? turns : this.servers, iceTransportPolicy:relay ? 'relay' : 'all'});
+    const pc = new RTCPeerConnection({iceServers:this.servers});
     peer.pc = pc; peer.started = Date.now(); peer.sent = false; peer.ice = [];
     pc.onicecandidate = e => {
       if (!e.candidate || peer.pc !== pc) return;

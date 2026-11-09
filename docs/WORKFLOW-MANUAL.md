@@ -11,7 +11,9 @@
 ## Подготовка среды
 
 Откройте PowerShell 7 в корне проекта `<корень-проекта>`. Нужны Git,
-GitHub CLI (`gh`), Go версии из `go.mod` (сейчас 1.27), Node.js/npm, Zig, Android
+GitHub CLI (`gh`), Go версии из `go.mod` (сейчас 1.27), Node.js/npm, C/C++-компилятор для Windows
+(Zig или MinGW-w64 — WinLibs/MSYS2; -Zig <zig.exe> либо -Mingw <каталог bin>, ключ
+`tools.mingw` в project.local.json или переменная MINGW), Android
 SDK и NDK. Локальные пути инструментов хранятся в игнорируемом Git файле
 `project.local.json`; личные адреса сетевых служб и другие локальные значения не
 должны попадать в публичный снимок.
@@ -35,8 +37,8 @@ gh repo view <владелец>/<приватный-репозиторий> --js
 
 ~~~powershell
 pwsh ./build.ps1 -Target Test
-go test ./config ./internal/... ./mobile ./netcheck
-go vet ./config ./internal/... ./cmd/signaling ./mobile ./netcheck
+go test ./config ./internal/... ./mobile
+go vet ./config ./internal/... ./cmd/signaling ./mobile
 go test -tags noai ./internal/app -run TestNoAI -count=1
 Push-Location web
 npm.cmd ci

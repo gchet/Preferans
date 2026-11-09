@@ -23,7 +23,7 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
       await new Promise<void>((resolve,reject)=>{proc.stderr!.once('data',()=>resolve());proc.once('error',reject);});
     }
     for(let i=0;i<3;i++) {
-      const proc=spawn(resolve('../.build/preferans-test.exe'),['-headless','-update-port','-1','-data',resolve(`../.build/voice-${Date.now()}-${i}`)],{windowsHide:true,env:{...process.env,...(roomsMode?{PREFERANS_ROOMS_URL:roomsURL}:{})}});
+      const proc=spawn(resolve('../.build/preferans-test.exe'),['-headless','-update-port','-1','-data',resolve(`../.build/voice-${Date.now()}-${i}`)],{windowsHide:true,env:{...process.env,PREFERANS_P2P_LOOPBACK:'1',...(roomsMode?{PREFERANS_ROOMS_URL:roomsURL}:{})}});
       processes.push(proc);
       const url=await new Promise<string>((resolve,reject)=>{proc.stdout!.once('data',b=>resolve(String(b).trim()));proc.once('error',reject);proc.once('exit',code=>reject(Error(`backend exited ${code}`)));});
       const context=await browser.newContext();contexts.push(context);
@@ -39,9 +39,6 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
         const u=new URL(route.request().url());
         if (u.origin===new URL(url).origin && u.pathname==='/api' && route.request().postDataJSON().action==='status') {
           const response=await route.fetch(), body=await response.json();
-          // The game's P2P link stays local. Only audio first tries an absent
-          // TURN endpoint, exercising automatic fallback to direct ICE.
-          body.data.stun=['turn:127.0.0.1:3479?transport=udp|test|test'];
           body.data.roomMode=roomsMode;
           await route.fulfill({response,json:body});return;
         }
@@ -55,7 +52,6 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
       clients.push({page,token:new URL(url).hash.slice(1),url});
       const state=await rpc(i,'status');
       await rpc(i,'appearance',{appearance:{...state.appearance,language:'ru'}});
-      await rpc(i,'configure',{stun:[]});
       await page.goto(url);
     }
     if(roomsMode){
@@ -64,9 +60,8 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     }else{
     await rpc(0,'create',{players:4,target:30,name:'Voice host',bots:false});
     for(let i=1;i<3;i++) {
-      const offer=await rpc(0,'invite',{seat:i});
-      const answer=await rpc(i,'join',{code:offer});
-      await rpc(0,'answer',{code:answer});
+      const code=await rpc(0,'invite',{seat:i});
+      await rpc(i,'join',{code});
       await expect.poll(async()=>!!(await rpc(0,'status')).connected[i],{timeout:15000}).toBeTruthy();
     }
     await rpc(0,'fill-bots');
@@ -77,7 +72,6 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
       await expect(page.locator('[data-voice-seat].offline')).toHaveCount(0,{timeout:30000});
       await page.locator('[data-microphone]').click();
       await expect(page.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
-      expect(await page.evaluate(()=>(window as any).__pcs.some((pc:RTCPeerConnection)=>pc.getConfiguration().iceTransportPolicy==='relay'))).toBeTruthy();
     }
     for(const {page} of clients) {
       await expect.poll(()=>page.evaluate(async()=>{

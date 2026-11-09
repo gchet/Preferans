@@ -22,6 +22,7 @@ export interface Appearance {
   logDisabled?: boolean;
   logPath?: string;
   updateURL?: string;
+  ntfyServers?: string;
 }
 export const backs = [["plaid", t("web.appearance.text007")], ["diamonds", t("web.appearance.text006")], ["ornament", t("web.appearance.text005")], ["waves", t("web.appearance.text004")], ["classic", t("web.appearance.text003")]] as const;
 export const decks = [

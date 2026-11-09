@@ -13,11 +13,9 @@ import (
 	"preferans/config"
 	"preferans/internal/app"
 	"preferans/internal/update"
-	"preferans/netcheck"
 	"preferans/web"
 )
 
-var appMode = "game"
 var appLanguage = "uk"
 
 func main() {
@@ -25,7 +23,6 @@ func main() {
 	headless := flag.Bool("headless", false, "Run local UI HTTP endpoint for development")
 	dev := flag.Bool("dev", false, "Open local UI in Chrome for development")
 	data := flag.String("data", "", "Data directory")
-	check := flag.Bool("netcheck", appMode == "netcheck", "Network diagnostic UI")
 	var logPath string
 	flag.StringVar(&logPath, "c", "", "Path to append-only diagnostic log")
 	flag.StringVar(&logPath, "config", "", "Path to append-only diagnostic log")
@@ -41,9 +38,6 @@ func main() {
 			log.Fatal(e)
 		}
 		name := "Preferans"
-		if *check {
-			name = "PreferansNetCheck"
-		}
 		*data = filepath.Join(d, name)
 	}
 	a := app.New(*data)
@@ -56,13 +50,10 @@ func main() {
 			log.Fatal(e)
 		}
 	}
-	assets := web.Files()
-	if *check {
-		a.EnableDiagnostics()
-		assets = netcheck.Files()
-		appMode = "netcheck"
+	if !*headless {
+		a.EnableLobby() // публичное лобби: игроки ничего не вводят
 	}
-	url, stop, e := app.Serve(a, assets)
+	url, stop, e := app.Serve(a, web.Files())
 	if e != nil {
 		log.Fatal(e)
 	}

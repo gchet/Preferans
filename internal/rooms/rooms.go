@@ -45,6 +45,7 @@ type Room struct {
 	RemovedMembers map[string]bool `json:"removedMembers,omitempty"`
 	DeletedParties map[string]bool `json:"deletedParties,omitempty"`
 	ID             string          `json:"id"`
+	Updated        int64           `json:"updated,omitempty"`
 	Name           string          `json:"name"`
 	Members        []Member        `json:"members"`
 	Table          *Table          `json:"table,omitempty"`
@@ -64,6 +65,7 @@ type Request struct {
 	AIEnabled *bool   `json:"aiEnabled,omitempty"`
 	ElementID string  `json:"elementID,omitempty"`
 	Parties   []Party `json:"parties,omitempty"`
+	Snapshot  []RoomSnap `json:"snapshot,omitempty"`
 	Op        string  `json:"op"`
 	Secret    string  `json:"secret"`
 	Room      string  `json:"room"`
@@ -82,6 +84,7 @@ type Response struct {
 	DeletedParties []PartyRef `json:"deletedParties,omitempty"`
 	AdminCatalog   bool       `json:"adminCatalog,omitempty"`
 	Rooms          []Room     `json:"rooms,omitempty"`
+	Snapshot       []RoomSnap `json:"snapshot,omitempty"`
 	Room           *Room      `json:"room,omitempty"`
 	Signals        []Signal   `json:"signals"`
 	Cursor         uint64     `json:"cursor"`
@@ -180,6 +183,16 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := Response{Epoch: s.epoch, Signals: []Signal{}}
+	if q.Op == "snapshot" || q.Op == "sync" {
+		// sync: клиент присылает свой снимок, сервис вливает его и возвращает итоговый (двусторонняя репликация).
+		if q.Op == "sync" {
+			if _, err := s.mergeLocked(q.Snapshot); err != nil {
+				return out, err
+			}
+		}
+		out.Snapshot = s.snapshot()
+		return out, nil
+	}
 	if len(q.Secret) < 32 || len(q.Secret) > 128 {
 		return out, locales.Errorf("go.internal.rooms.rooms.text001")
 	}
@@ -241,7 +254,7 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 				return out, locales.Errorf("go.internal.rooms.rooms.text004")
 			}
 		}
-		r := &Room{ID: game.ID(), Name: name, Members: []Member{}}
+		r := &Room{ID: game.ID(), Name: name, Updated: s.now().Unix(), Members: []Member{}}
 		s.Catalog[r.ID] = r
 		if e := s.save(); e != nil {
 			delete(s.Catalog, r.ID)
@@ -269,10 +282,11 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 				return out, locales.Errorf("go.internal.rooms.rooms.text007")
 			}
 		}
-		old := r.Name
+		old, oldAt := r.Name, r.Updated
 		r.Name = name
+		r.Updated = s.now().Unix()
 		if e := s.save(); e != nil {
-			r.Name = old
+			r.Name, r.Updated = old, oldAt
 			return out, e
 		}
 		out.Room = copyRoom(r)
@@ -287,9 +301,11 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 				return out, locales.Errorf("go.internal.rooms.rooms.text009")
 			}
 		}
-		delete(s.Catalog, r.ID)
+		// Удалённая комната остаётся надгробием, чтобы реплики каталога у других игроков её не воскресили.
+		backup := *r
+		r.Deleted, r.Updated, r.Members, r.Table, r.Parties = true, s.now().Unix(), nil, nil, nil
 		if e := s.save(); e != nil {
-			s.Catalog[r.ID] = r
+			*r = backup
 			return out, e
 		}
 		delete(s.events, r.ID)

@@ -6,9 +6,10 @@ import "preferans/locales"
 import (
 	"path/filepath"
 	"preferans/internal/app"
-	"preferans/netcheck"
 	"preferans/web"
 	"sync"
+
+	_ "time/tzdata" // база часовых поясов: на Android её нет в виде, доступном Go
 )
 
 var mu sync.Mutex
@@ -25,13 +26,23 @@ var secretCipher SecretCipher
 
 func SetSecretCipher(cipher SecretCipher) { mu.Lock(); defer mu.Unlock(); secretCipher = cipher }
 
+// SetTimeZone передаёт часовой пояс Android (TimeZone.getDefault): без него время в журнале шло бы по UTC.
+// Вызывается до Start.
+func SetTimeZone(name string, offsetSeconds int) { app.SetLocalZone(name, offsetSeconds) }
+
+// NetworkChanged вызывается Android при возврате приложения из фона и при появлении сети: быстрое восстановление связи.
+func NetworkChanged() {
+	mu.Lock()
+	a := current
+	mu.Unlock()
+	if a != nil {
+		a.NetworkChanged()
+	}
+}
+
+var current *app.App
+
 func Start(dataDir string) (string, error) {
-	return start(dataDir, false)
-}
-func StartNetworkTest(dataDir string) (string, error) {
-	return start(dataDir, true)
-}
-func start(dataDir string, diagnostic bool) (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 	if stop != nil {
@@ -43,18 +54,15 @@ func start(dataDir string, diagnostic bool) (string, error) {
 		a.Close()
 		return "", locales.Errorf("go.mobile.mobile.text001", err)
 	}
-	assets := web.Files()
-	if diagnostic {
-		a.EnableDiagnostics()
-		assets = netcheck.Files()
-	}
-	url, close, e := app.Serve(a, assets)
+	a.EnableLobby() // публичное лобби: игроки ничего не вводят
+	url, close, e := app.Serve(a, web.Files())
 	if e != nil {
 		a.Close()
 		return "", e
 	}
 	stop = close
 	address = url
+	current = a
 	return url, nil
 }
 func Stop() {
@@ -63,6 +71,7 @@ func Stop() {
 	if stop != nil {
 		stop()
 		stop = nil
+		current = nil
 		address = ""
 	}
 }

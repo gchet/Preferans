@@ -1106,37 +1106,6 @@ test('room owner can close a table without a local game',async({page})=>{
   await expect(page.locator('[data-room-action="close-table"]')).toHaveCount(0);
 });
 
-test('rooms: first connection asks only name and password and retries errors',async({page})=>{
-  let configured=false, attempts=0;
-  await page.route('**/api',async route=>{
-    const q=route.request().postDataJSON();
-    if(q.action==='room-service')return route.fulfill({json:{data:null}});
-    if(q.action==='connection-setup'){
-      attempts++;
-      expect(q.name).toBe('Партнёр');
-      expect(q.stun[0]).toMatch(/^turn:signaling.example.org:3478\?transport=udp\|preferans\|/);
-      if(q.stun[0].endsWith('|bad'))return route.fulfill({json:{error:'TURN отклонил пользователя или пароль'}});
-      configured=true;return route.fulfill({json:{data:null}});
-    }
-    if(q.action==='rooms-list')return route.fulfill({json:{data:{rooms:[]}}});
-    const response=await route.fetch(),body=await response.json();
-    if(q.action==='status')Object.assign(body.data,{connectionSetup:!configured,roomMode:true,room:null});
-    await route.fulfill({response,json:body});
-  });
-  await page.goto(url);
-  await expect(page.locator('#connection-setup')).toBeVisible();
-  await expect(page.locator('[name="turn-server"]')).not.toBeVisible();
-  await expect(page.getByLabel('Пароль подключения',{exact:true})).toHaveAttribute('type','password');
-  await page.getByLabel('Ваше имя',{exact:true}).fill('Партнёр');
-  await page.getByLabel('Пароль подключения',{exact:true}).fill('bad');
-  await page.getByRole('button',{name:'Проверить и сохранить',exact:true}).click();
-  await expect(page.locator('#setup-result')).toContainText('пароль');
-  await page.getByLabel('Пароль подключения',{exact:true}).fill('good');
-  await page.getByRole('button',{name:'Проверить и сохранить',exact:true}).click();
-  await expect(page.locator('#room-picker')).toBeVisible();expect(attempts).toBe(2);
-  await page.reload();await expect(page.locator('#room-picker')).toBeVisible();
-});
-
 test('button contact and click have separate feedback without duplicate actions',async({page})=>{
   await page.goto(url);
   const button=page.getByRole('button',{name:'Правила',exact:true});
@@ -1412,24 +1381,6 @@ test('guest sees Exit on the table and in settings', async ({page}) => {
   await expect(page.locator('#leave')).toHaveText('Выйти');
 });
 
-test('joining saves the name from the first screen before discovery', async ({page}) => {
-  let searched = false;
-  await page.route('http://signaling.example.org:8080/**', async route => {
-    const response = await page.request.post(new URL('/api',url).toString(), {
-      headers:{'X-Preferans-Token':new URL(url).hash.slice(1)}, data:{action:'status'}
-    });
-    expect((await response.json()).data.appearance.name).toBe('Игорь');
-    searched = true;
-    await route.fulfill({json:{}});
-  });
-  await page.goto(url);
-  await page.locator('#create-form [name="name"]').fill('Игорь');
-  await page.locator('[data-auto-join]').click();
-  await expect.poll(()=>searched).toBe(true);
-  await page.reload();
-  await expect(page.locator('#create-form [name="name"]')).toHaveValue('Игорь');
-});
-
 for(const players of [3,4]) test(`edited SVG layout ${players} players uses equal cards`, async ({page})=>{
   await page.route('http://signaling.example.org:8080/**', route=>route.fulfill({json:{}}));
   await page.goto(url);
@@ -1530,25 +1481,6 @@ test('single whister drags cards from the passed hand at its seat', async ({page
   await expect(page.locator('.player.active .exposed [data-card="1"]')).toBeDisabled();
   await dragCard(page,page.locator('.player.active .exposed [data-card="0"]'),page.locator('.playing-field .center'));
   await expect.poll(()=>played).toEqual([0]);
-});
-
-test('startup waits for an explicit join even when a table exists', async ({page}) => {
-  let searches = 0;
-  await page.route('http://signaling.example.org:8080/**', route => {
-    searches++;
-    return route.fulfill({json:{Offer:{kind:'offer',code:'test-offer',seat:1,name:'Host'}}});
-  });
-  await page.route('**/api', async route => {
-    if (route.request().postDataJSON().action === 'join') return route.fulfill({json:{error:'Test connection stopped'}});
-    await route.fallback();
-  });
-  await page.goto(url);
-  await expect(page.locator('#create-form')).toBeVisible();
-  await page.waitForTimeout(1700);
-  expect(searches).toBe(0);
-  await expect(page.locator('#finish-party')).toBeHidden();
-  await page.getByRole('button',{name:'Присоединиться →'}).click();
-  await expect.poll(()=>searches).toBeGreaterThan(0);
 });
 
 test('table agreements save before creation and freeze on start', async ({page}) => {
@@ -2152,12 +2084,14 @@ test("connection settings and invalid invitation API", async ({ page }) => {
     headers:{'X-Preferans-Token':new URL(url).hash.slice(1)},
     data:{action:'join',code:'bad-code'},
   });
-  expect((await response.json()).error).toContain('Неверный код');
+  expect((await response.json()).error).toContain('PREF2');
   await page.goto(url);
   await page.getByRole("button", {name:"Настройки",exact:true}).click();
   await page.getByRole("tab", {name:"Подключение",exact:true}).click();
-  await page.locator('[name="stun"]').locator('xpath=ancestor::details').locator('summary').click();
-  await page.locator('[name="stun"]').fill("");
+  await expect(page.locator('[name="stun"]')).toHaveCount(0);
+  await expect(page.locator('[name="turn-server"]')).toHaveCount(0);
+  // поля кода сервиса скрыты: сервис выбирается автоматически публичным лобби
+  await expect(page.locator('#service-block')).toBeHidden();
   await page.getByRole("button", {name:"Сохранить",exact:true}).click();
   await expect(page.locator("#panel")).not.toBeVisible();
 });

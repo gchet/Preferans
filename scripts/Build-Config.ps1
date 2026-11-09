@@ -21,7 +21,7 @@ function Resolve-BuildTool([string]$Explicit, [hashtable]$Local, [string]$Key, [
 
 function Write-BuildNetwork([string]$Root, [hashtable]$Local) {
     $network = @{}
-    $allowed = @('roomServiceURL','turnServer','turnUser','legacySignalingURL','updateAddressHint')
+    $allowed = @('updateAddressHint')
     if ($Local.network) {
         foreach ($key in $Local.network.Keys) {
             if ($key -notin $allowed) { throw "Unsupported network setting: $key. Do not store credentials in build configuration." }

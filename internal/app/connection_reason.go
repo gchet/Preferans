@@ -69,7 +69,7 @@ func (a *App) notifyExitLocked() []<-chan struct{} {
 			continue
 		}
 		l.ExitAck = make(chan struct{})
-		if l.Peer.Send(Packet{Type: "app-exit"}) == nil {
+		if l.send(Packet{Type: "app-exit"}) == nil {
 			acks = append(acks, l.ExitAck)
 		}
 	}
@@ -102,7 +102,7 @@ func (a *App) receiveExitLocked(seat int, l *Link, p Packet) bool {
 	if p.Type != "app-exit" {
 		return false
 	}
-	_ = l.Peer.Send(Packet{Type: "app-exit-ack"})
+	_ = l.send(Packet{Type: "app-exit-ack"})
 	a.setConnectionReasonLocked(seat, "exited")
 	l.Auth = false
 	l.Status = "disconnected"

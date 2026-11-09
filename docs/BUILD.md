@@ -16,7 +16,7 @@ Zig, JDK 17, Android SDK 36 и NDK. Gradle 8.13 закреплён Wrapper в an
 ~~~
 
 Результаты: dist/Preferans.exe, dist/Preferans.apk и dist/version.json.
-Имена, параметры -AI, -SkipWeb, -Emulator и -NetworkTest сохранены.
+Имена и параметры -AI, -SkipWeb и -Emulator сохранены.
 APK по-прежнему подписывается существующим debug-ключом. Не удаляйте его:
 другой ключ не позволит обновить уже установленное приложение поверх старого.
 
@@ -24,12 +24,9 @@ APK по-прежнему подписывается существующим de
 
 Скопируйте project.local.example.json в project.local.json и задайте нужные поля.
 Не копируйте пример серверов буквально: замените адресами своей инфраструктуры
-или удалите блок network для локальной игры. project.local.json исключён из Git.
+или удалите блок network. project.local.json исключён из Git.
 
 - tools.androidSdk, tools.zig, tools.gradle — пути инструментов. Пустой Gradle использует Wrapper.
-- network.roomServiceURL — полный URL службы комнат, например https://signaling.example.org/v2/rooms.
-- network.turnServer и turnUser — адрес и имя TURN. Пароль вводится в приложении.
-- network.legacySignalingURL — необязательный адрес прежнего /v1/singleton.
 - network.updateAddressHint — подсказка адреса компьютера для обновления APK и переноса настроек ИИ.
 - deployment.server — SSH-адрес для Update-Signaling.ps1 -Deploy.
 
@@ -56,7 +53,7 @@ ANDROID_SDK_ROOT, ZIG и GRADLE. Другой файл выбирается че
 фронтенд должен быть пересобран вместе с ядром.
 
 В чистой публичной сборке сервер владельца проекта не задан. Выберите локальную
-игру с ботами или укажите собственный сервер комнат и TURN в приложении.
+игру с ботами или создайте комнату на своём устройстве: отдельный сервер не нужен.
 
 Адрес сервера меняется только вне партии и после выхода из сетевой комнаты,
 чтобы идентификаторы одной инфраструктуры не отправлялись другой.

@@ -18,7 +18,7 @@ export class RoomUI {
         const op=b.dataset.roomAction!,id=(document.querySelector('#room-select') as HTMLSelectElement)?.value || '';
         const name=(document.querySelector('#room-name') as HTMLInputElement)?.value.trim() || '';
         if(op==='local'){
-          const player=document.querySelector<HTMLInputElement>('#room-player-name, #connection-setup-form [name="name"], #create-form [name="name"]')?.value || this.name();
+          const player=document.querySelector<HTMLInputElement>('#room-player-name, #create-form [name="name"]')?.value || this.name();
           await this.rpc('profile',{name:player});await this.rpc('room-local');
         }else if(op==='enter'){
           if(!id)throw Error(t("web.rooms.text011"));

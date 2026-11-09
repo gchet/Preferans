@@ -26,6 +26,8 @@ Thumbs.db
 
 # Рабочие/кэш-каталоги, не относящиеся к репозиторию
 /.info/
+/.logs/
+/.empryo/
 /.gocache/
 /.android/
 /.adb-home/
@@ -61,3 +63,7 @@ adbkey
 adbkey.pub
 id_rsa
 id_ed25519
+natlab.exe
+.lab/
+voicetest.exe
+natlab-arm64

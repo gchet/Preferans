@@ -1,16 +1,23 @@
 package app
 
 import (
-	"preferans/config"
+	"preferans/internal/p2p"
 	"preferans/locales"
 	"strings"
 )
 
-// SetRoomService changes only an empty session. A live table retains its server.
+// SetRoomService выбирает сервис комнат: пустая строка — собственный сервис этого устройства,
+// иначе код сервиса другого игрока (PREF2...). Меняется только в пустой сессии: живой стол сохраняет свой сервис.
 func (a *App) SetRoomService(value string) error {
 	value = strings.TrimSpace(value)
-	if err := config.ValidateHTTPURL(value); err != nil {
-		return err
+	if value != "" {
+		c, err := p2p.Decode(value)
+		if err != nil {
+			return err
+		}
+		if c.Kind != p2p.KindService {
+			return locales.Errorf("go.connection.service_code_required")
+		}
 	}
 	a.roomControl.Lock()
 	defer a.roomControl.Unlock()

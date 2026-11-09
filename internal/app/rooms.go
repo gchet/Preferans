@@ -3,15 +3,14 @@ package app
 import "preferans/locales"
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
 	"preferans/config"
 	"preferans/internal/game"
-	"preferans/internal/network"
+	"os"
+	"preferans/internal/p2p"
 	"preferans/internal/rooms"
+	"regexp"
+	"strings"
 	"runtime"
 	"sort"
 	"time"
@@ -30,6 +29,9 @@ type roomState struct {
 	room       *rooms.Room
 	url        string
 	err        string
+	errKey     string    // нормализованный ключ последней записанной в журнал ошибки
+	errAt      time.Time // когда она записана
+	errSkipped int       // сколько повторов с тех пор не записано
 	seen       time.Time
 	cursor     uint64
 	epoch      string
@@ -53,12 +55,17 @@ func cloneRoom(r *rooms.Room) *rooms.Room {
 }
 func (a *App) inRoom() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.rooms.config.Current != "" }
 func (a *App) initRooms() {
-	a.rooms = roomState{url: config.Interface.RoomServiceURL, attempts: map[string]time.Time{}, working: map[string]bool{}}
-	if a.appearance.RoomServiceURL != "" {
-		a.rooms.url = a.appearance.RoomServiceURL
+	a.rooms = roomState{attempts: map[string]time.Time{}, working: map[string]bool{}}
+	if u := a.appearance.RoomServiceURL; u != "" {
+		// настройки прежних версий хранили HTTP-адрес сервера комнат: теперь допустим только код сервиса PREF2
+		if c, err := p2p.Decode(u); err != nil || c.Kind != p2p.KindService {
+			a.appearance.RoomServiceURL = ""
+			_ = a.config.Save("appearance", a.appearance)
+		}
 	}
+	a.rooms.url = a.appearance.RoomServiceURL
 	if u := os.Getenv("PREFERANS_ROOMS_URL"); u != "" {
-		a.rooms.url = u
+		a.rooms.url = u // только для тестов и разработки (HTTP)
 	}
 	_ = a.config.Load("room-session", &a.rooms.config)
 	if a.appearance.LocalOnly && a.rooms.config.Table == "" {
@@ -99,25 +106,9 @@ func (a *App) roomRequest(q rooms.Request) (rooms.Response, error) {
 		q.Name = a.appearance.Name
 	}
 	a.mu.Unlock()
-	b, e := json.Marshal(q)
+	out, e := a.roomCall(u, q)
 	if e != nil {
-		return rooms.Response{}, e
-	}
-	client := http.Client{Timeout: time.Duration(config.Interface.RoomRequestTimeoutMs) * time.Millisecond}
-	resp, e := client.Post(u, "application/json", bytes.NewReader(b))
-	if e != nil {
-		return rooms.Response{}, locales.Errorf("go.internal.app.rooms.text001", e)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return rooms.Response{}, locales.Errorf("go.internal.app.rooms.text002", resp.StatusCode)
-	}
-	var out rooms.Response
-	if e = json.NewDecoder(http.MaxBytesReader(nil, resp.Body, 4*1024*1024)).Decode(&out); e != nil {
-		return out, e
-	}
-	if out.Error != "" {
-		return out, fmt.Errorf("%s", out.Error)
+		return out, locales.Errorf("go.internal.app.rooms.text001", e)
 	}
 	a.applyAdminRemovals(q.Room, out)
 	return out, nil
@@ -409,9 +400,7 @@ func (a *App) roomTick() {
 		return
 	}
 	if e != nil {
-		if a.rooms.err != e.Error() {
-			a.logLocked(locales.Text("go.internal.app.rooms.text011"), e)
-		}
+		a.logRoomErrorLocked(e)
 		a.rooms.err = e.Error()
 		a.mu.Unlock()
 		return
@@ -481,11 +470,6 @@ func (a *App) roomTick() {
 	if r.Table == nil {
 		return
 	}
-	for _, m := range out.Signals {
-		if m.Kind == "answer" && m.Table == r.Table.ID {
-			a.handleRoomSignal(r, m, generation)
-		}
-	}
 	if offer != nil && offer.Table == r.Table.ID {
 		a.handleRoomSignal(r, *offer, generation)
 	}
@@ -530,7 +514,7 @@ func (a *App) heartbeat() {
 			l.Status = "disconnected"
 			a.rememberConnectionLossLocked(seat, l)
 			l.Auth = false
-			go l.Peer.Close()
+			go l.close()
 			if seat < len(a.connected) {
 				a.connected[seat] = false
 			}
@@ -539,9 +523,9 @@ func (a *App) heartbeat() {
 			}
 			changed = true
 		} else {
-			_ = l.Peer.Send(Packet{Type: "heartbeat"})
+			_ = l.send(Packet{Type: "heartbeat"})
 			if a.saved.State == nil && a.saved.Pending != nil && (!a.clientPaused || a.saved.Pending.Action == "pause" || a.saved.Pending.Action == "resume-play") {
-				_ = l.Peer.Send(Packet{Type: "command", Command: a.saved.Pending})
+				_ = l.send(Packet{Type: "command", Command: a.saved.Pending})
 			}
 		}
 	}
@@ -555,7 +539,7 @@ func (a *App) receiveHeartbeatLocked(l *Link, p Packet) {
 	}
 	l.LastSeen = time.Now()
 	if p.Type == "heartbeat" {
-		_ = l.Peer.Send(Packet{Type: "heartbeat-ack"})
+		_ = l.send(Packet{Type: "heartbeat-ack"})
 	}
 }
 func (a *App) startRoomInvite(r *rooms.Room, seat int, player string, generation uint64) {
@@ -580,7 +564,7 @@ func (a *App) startRoomInvite(r *rooms.Room, seat int, player string, generation
 	if l := a.peers[seat]; l != nil {
 		a.logLocked(locales.Text("go.internal.app.rooms.text013"), seat+1, time.Since(a.rooms.attempts[player]).Seconds(), l.Status, l.Accepted, l.Auth)
 		delete(a.peers, seat)
-		go l.Peer.Close()
+		go l.close()
 	}
 	a.rooms.working[player] = true
 	a.rooms.attempts[player] = time.Now()
@@ -609,7 +593,7 @@ func roomRetryDue(link *Link, started, now time.Time) bool {
 	if link != nil {
 		if handshakeInProgress(link) {
 			delay = time.Duration(config.Interface.HandshakeRetryMs) * time.Millisecond
-		} else if link.Status == "waiting-answer" {
+		} else if link.Status == "waiting-guest" {
 			delay = time.Duration(config.Interface.AnswerRetryMs) * time.Millisecond
 		}
 	}
@@ -623,23 +607,11 @@ func (a *App) handleRoomSignal(r *rooms.Room, m rooms.Signal, generation uint64)
 		return
 	}
 	a.mu.Unlock()
-	if m.Kind == "answer" && r.Table.Host == self {
-		c, e := network.Decode(m.Payload)
-		if e != nil || c.Seat < 1 || c.Seat >= len(r.Table.Players) || r.Table.Players[c.Seat] != m.From {
-			return
-		}
-		if e = a.Answer(m.Payload); e != nil {
-			a.mu.Lock()
-			a.logLocked(locales.Text("go.internal.app.rooms.text015"), e)
-			a.mu.Unlock()
-		}
-		return
-	}
 	if m.Kind != "offer" || m.From != r.Table.Host {
 		return
 	}
-	c, e := network.Decode(m.Payload)
-	if e != nil || c.Seat < 1 || c.Seat >= len(r.Table.Players) || r.Table.Players[c.Seat] != self {
+	c, e := p2p.Decode(m.Payload)
+	if e != nil || c.Kind != p2p.KindTable || c.Seat < 1 || c.Seat >= len(r.Table.Players) || r.Table.Players[c.Seat] != self {
 		return
 	}
 	a.mu.Lock()
@@ -656,7 +628,7 @@ func (a *App) handleRoomSignal(r *rooms.Room, m rooms.Signal, generation uint64)
 	a.rooms.offer = nil
 	a.mu.Unlock()
 	go func() {
-		answer, e := a.join(m.Payload, &generation)
+		e := a.join(m.Payload, &generation)
 		if e == nil {
 			a.mu.Lock()
 			valid := a.rooms.generation == generation
@@ -667,9 +639,6 @@ func (a *App) handleRoomSignal(r *rooms.Room, m rooms.Signal, generation uint64)
 				_ = a.config.Save("room-session", a.rooms.config)
 			}
 			a.mu.Unlock()
-			if valid {
-				e = a.roomSignal(r.ID, "answer", r.Table.Host, c.Table, answer)
-			}
 		}
 		a.mu.Lock()
 		a.rooms.working["join"] = false
@@ -695,4 +664,26 @@ func (a *App) roomVoiceReceiveLocked(r *rooms.Room, m rooms.Signal) {
 	}
 	v.From = from
 	a.queueVoiceLocked(v)
+}
+
+var digitsRE = regexp.MustCompile(`[0-9]+`)
+
+// logRoomErrorLocked пишет ошибку связи с сервисом комнат в журнал без лавины повторов: при потере сети опрос идёт
+// каждую секунду, и одна и та же ошибка (с разными адресами и портами в тексте) заполняла журнал мегабайтами.
+// Новая ошибка пишется сразу, повтор — не чаще раза в минуту, с числом пропущенных повторов.
+func (a *App) logRoomErrorLocked(e error) {
+	key := e.Error()
+	if i := strings.IndexByte(key, '\n'); i >= 0 {
+		key = key[:i]
+	}
+	key = digitsRE.ReplaceAllString(key, "#")
+	if a.rooms.errKey == key && time.Since(a.rooms.errAt) < time.Minute {
+		a.rooms.errSkipped++
+		return
+	}
+	a.logLocked(locales.Text("go.internal.app.rooms.text011"), e)
+	if a.rooms.errKey == key && a.rooms.errSkipped > 0 {
+		a.logLocked(locales.Text("go.internal.app.rooms.err_repeats"), a.rooms.errSkipped)
+	}
+	a.rooms.errKey, a.rooms.errAt, a.rooms.errSkipped = key, time.Now(), 0
 }

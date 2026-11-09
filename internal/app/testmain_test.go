@@ -4,11 +4,11 @@ import (
 	"os"
 	"testing"
 
-	"preferans/internal/network"
+	"preferans/internal/p2p"
 )
 
 // Peers created by tests stay on loopback so Windows Firewall does not prompt for app.test.exe.
 func TestMain(m *testing.M) {
-	network.SetLoopbackOnly(true)
+	p2p.TestLoopback = true
 	os.Exit(m.Run())
 }

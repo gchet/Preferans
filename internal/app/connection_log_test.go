@@ -82,14 +82,3 @@ func TestSavedWindowsLogPath(t *testing.T) {
 		t.Fatal("override not writing")
 	}
 }
-
-func TestICELogExcludesCredentials(t *testing.T) {
-	servers := iceServerSummary([]string{"turn:example.org:3478?transport=udp|private-user|private-password", "stun:example.org"})
-	if strings.Contains(servers, "private-") || !strings.Contains(servers, "TURN=1") {
-		t.Fatal(servers)
-	}
-	candidates := iceCandidateSummary("a=ice-pwd:private-password\na=ice-ufrag:private-user\na=candidate:1 1 udp 1 192.0.2.1 10000 typ host\na=candidate:2 1 udp 1 192.0.2.2 20000 typ relay\n")
-	if strings.Contains(candidates, "private-") || !strings.Contains(candidates, "host=1 srflx=0 relay=1") {
-		t.Fatal(candidates)
-	}
-}

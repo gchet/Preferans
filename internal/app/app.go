@@ -14,7 +14,7 @@ import (
 
 	"preferans/config"
 	"preferans/internal/game"
-	"preferans/internal/network"
+	"preferans/internal/p2p"
 	"preferans/internal/rooms"
 	"preferans/internal/secrets"
 	"preferans/internal/storage"
@@ -37,7 +37,6 @@ type Packet struct {
 	Ack               string         `json:"ack,omitempty"`
 	Name              string         `json:"name,omitempty"`
 	Voice             *VoiceMessage  `json:"voice,omitempty"`
-	ProbeID           string         `json:"probeID,omitempty"`
 	Payload           string         `json:"payload,omitempty"`
 	Type              string         `json:"type"`
 	Key               string         `json:"key,omitempty"`
@@ -52,8 +51,8 @@ type Link struct {
 	ExitAck      chan struct{}
 	LastSeen     time.Time
 	AuthDeadline time.Time
-	Probe        probeState
-	Peer         *network.Peer
+	Peer         *p2p.Conn
+	pmu          sync.Mutex
 	Nonce        string
 	Auth         bool
 	Accepted     bool
@@ -82,7 +81,22 @@ type App struct {
 	logFile           *os.File
 	logPath           string
 	logOverride       bool
-	stun              []string
+	node              *p2p.Node
+	nodeErr           error
+	nodeOnce          sync.Once
+	roomSvc           *rooms.Server
+	roomSvcErr        error
+	roomSvcOnce       sync.Once
+	lobbyOnce         sync.Once
+	p2pLogOnce        sync.Once
+	p2pLogs           chan string
+	lobbyHost         string // peer ID сервиса, за которым следуем (пусто — собственный сервис)
+	lobbySince        int64  // только для тестов: подмена времени установки
+	lobbyAnnounced   time.Time // когда последний раз опубликовано объявление (только горутина лобби)
+	logOnceAt         map[string]time.Time // не чаще раза в период для сообщений с одним ключом (a.mu)
+	lobbySavedTry    time.Time // последняя попытка связаться с запомненным ведущим (только горутина лобби)
+	lobbyKick        chan struct{} // внеочередной опрос лобби (после возврата сети)
+	lobbyNote        string    // последнее записанное в журнал состояние лобби (чтобы не повторять)
 	appearance        Appearance
 	closed            chan struct{}
 	once              sync.Once
@@ -91,7 +105,6 @@ type Status struct {
 	ConnectionReasons map[int]string `json:"connectionReasons"`
 	AIEnabled         bool           `json:"aiEnabled"`
 	AIReview          *AIReview      `json:"aiReview,omitempty"`
-	ConnectionSetup   bool           `json:"connectionSetup"`
 	LogPath           string         `json:"logPath"`
 	LogSize           int64          `json:"logSize"`
 	LogPathOverride   bool           `json:"logPathOverride"`
@@ -108,7 +121,6 @@ type Status struct {
 	Paused            bool           `json:"paused"`
 	Error             string         `json:"error"`
 	Host              bool           `json:"host"`
-	STUN              []string       `json:"stun"`
 	Links             map[int]string `json:"links"`
 	Appearance        Appearance     `json:"appearance"`
 	Logs              []string       `json:"logs"`
@@ -122,17 +134,16 @@ type SaveInfo struct {
 }
 
 func New(dir string) *App {
-	a := &App{store: storage.Store{Dir: filepath.Join(dir, "saves")}, config: storage.Store{Dir: dir}, peers: map[int]*Link{}, stun: []string{"stun:stun.l.google.com:19302", "stun:stun.cloudflare.com:3478"}, closed: make(chan struct{})}
-	var urls []string
-	if a.config.Load("settings", &urls) == nil {
-		a.stun = urls
-	}
+	a := &App{store: storage.Store{Dir: filepath.Join(dir, "saves")}, config: storage.Store{Dir: dir}, peers: map[int]*Link{}, closed: make(chan struct{}), lobbyKick: make(chan struct{}, 1)}
 	a.appearance = Appearance{Name: locales.Text("go.internal.app.app.text001"), Deck: "atlas", Size: "normal", LargeIndices: true, Back: "plaid"}
 	var appearance Appearance
 	if a.config.Load("appearance", &appearance) == nil {
 		appearance.migrateDeck()
 		if appearance.valid() {
 			a.appearance = appearance
+			if list, err := p2p.ParseNtfyServers(appearance.NtfyServers); err == nil {
+				p2p.SetNtfyServers(list)
+			}
 		}
 	}
 	if runtime.GOOS == "windows" {
@@ -165,6 +176,9 @@ func (a *App) Close() {
 			a.logFile = nil
 		}
 		a.mu.Unlock()
+		if a.node != nil {
+			a.node.Close()
+		}
 	})
 }
 
@@ -212,7 +226,8 @@ func (a *App) enableLogFile(path string) error {
 	}
 	old := a.logFile
 	a.logFile = f
-	a.logLocked(locales.Text("go.internal.app.app.text004"), runtime.GOOS, runtime.GOARCH, iceServerSummary(a.stun))
+	a.logLocked(locales.Text("go.internal.app.app.text004"), runtime.GOOS, runtime.GOARCH, "libp2p")
+	a.logZoneLocked()
 	a.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
@@ -251,7 +266,7 @@ func (a *App) disconnectLocked() {
 	a.cancelAILocked()
 	a.voiceQueue = nil
 	for _, l := range a.peers {
-		go l.Peer.Close()
+		go l.close()
 	}
 	a.peers = map[int]*Link{}
 	a.connected = nil
@@ -284,18 +299,16 @@ func (a *App) statusLocked() Status {
 	if a.syncPauseLocked() {
 		a.broadcastLocked()
 	}
-	s := Status{Current: a.saved.Table != "", Connected: append([]bool{}, a.connected...), Paused: a.pausedLocked(), Error: a.lastError, Host: a.saved.State != nil, STUN: append([]string{}, a.stun...), Links: map[int]string{}}
+	s := Status{Current: a.saved.Table != "", Connected: append([]bool{}, a.connected...), Paused: a.pausedLocked(), Error: a.lastError, Host: a.saved.State != nil, Links: map[int]string{}}
 	s.AIEnabled = a.aiEnabledLocked()
 	s.LogPath, s.LogPathOverride = a.logPath, a.logOverride
 	s.LogSize = a.logSizeLocked()
 	s.AIReview = a.aiReviewSnapshotLocked()
-	s.ConnectionSetup = !hasTURN(a.stun) || a.rooms.url == ""
 	s.Appearance = a.appearance
 	s.RoomMode = true
 	s.RoomLocal = a.rooms.config.Current == localRoomID
 	if s.RoomLocal {
 		a.updateLocalRoomLocked()
-		s.ConnectionSetup = false
 	}
 	s.RoomSelf = a.rooms.identity()
 	s.Room = cloneRoom(a.rooms.room)
@@ -322,7 +335,7 @@ func (a *App) Status() Status { a.mu.Lock(); defer a.mu.Unlock(); return a.statu
 
 // logLocked keeps a short, password-free connection trace for the UI.
 func (a *App) logLocked(format string, args ...any) {
-	line := fmt.Sprintf("%s  %s", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
+	line := fmt.Sprintf("%s  %s", time.Now().Format("2006-01-02 15:04:05.000"), fmt.Sprintf(format, args...))
 	a.logs = append(a.logs, line)
 	if len(a.logs) > 240 {
 		a.logs = a.logs[len(a.logs)-240:]
@@ -383,7 +396,7 @@ func (a *App) FillBots() (int, error) {
 	for _, i := range seats {
 		if l := a.peers[i]; l != nil {
 			delete(a.peers, i)
-			go l.Peer.Close()
+			go l.close()
 		}
 		a.connected[i] = true
 	}
@@ -493,27 +506,6 @@ func (a *App) Leave() {
 	a.saved = Saved{}
 	a.lastError = ""
 }
-func (a *App) Configure(stun []string) error {
-	if len(stun) > 8 {
-		return locales.Errorf("go.internal.app.app.text010")
-	}
-	for _, u := range stun {
-		parts := strings.Split(u, "|")
-		if len(parts) == 1 && !strings.HasPrefix(u, "stun:") {
-			return locales.Errorf("go.internal.app.app.text011")
-		}
-		if len(parts) == 3 && !(strings.HasPrefix(parts[0], "turn:") || strings.HasPrefix(parts[0], "turns:")) {
-			return locales.Errorf("go.internal.app.app.text012")
-		}
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if e := a.config.Save("settings", stun); e != nil {
-		return e
-	}
-	a.stun = append([]string{}, stun...)
-	return nil
-}
 func (a *App) commandLocked(c game.Command) error {
 	a.syncPauseLocked()
 	pauseCommand := c.Action == "pause" || c.Action == "resume-play"
@@ -533,7 +525,7 @@ func (a *App) commandLocked(c game.Command) error {
 		if e := a.store.Save(a.saved.Table, a.saved); e != nil {
 			return e
 		}
-		return l.Peer.Send(Packet{Type: "command", Command: &c})
+		return l.send(Packet{Type: "command", Command: &c})
 	}
 	s := a.saved.State
 	if a.pausedLocked() && !pauseCommand {
@@ -586,7 +578,7 @@ func (a *App) broadcastLocked() {
 			continue
 		}
 		v := a.viewWithAILocked(seat)
-		e := l.Peer.Send(Packet{Type: "view", View: &v, Connected: a.connected, Paused: a.pausedLocked(), ConnectionReasons: a.connectionReasonsLocked()})
+		e := l.send(Packet{Type: "view", View: &v, Connected: a.connected, Paused: a.pausedLocked(), ConnectionReasons: a.connectionReasonsLocked()})
 		if e != nil {
 			l.Status = "disconnected"
 			a.rememberConnectionLossLocked(seat, l)
@@ -663,7 +655,7 @@ func (a *App) receiveHost(seat int, l *Link, b []byte) {
 	if p.Type == "hello" {
 		if p.Key != a.saved.Keys[seat] || p.Nonce != l.Nonce {
 			a.logLocked(locales.Text("go.internal.app.app.text020"), seat+1)
-			_ = l.Peer.Send(Packet{Type: "error", Error: locales.Text("go.internal.app.app.text021")})
+			_ = l.send(Packet{Type: "error", Error: locales.Text("go.internal.app.app.text021")})
 			return
 		}
 		sv := a.saved
@@ -671,7 +663,7 @@ func (a *App) receiveHost(seat int, l *Link, b []byte) {
 		sv.Joined[seat] = true
 		if name := strings.TrimSpace(p.Name); name != "" {
 			if len([]rune(name)) > 24 {
-				_ = l.Peer.Send(Packet{Type: "error", Error: locales.Text("go.internal.app.app.text022")})
+				_ = l.send(Packet{Type: "error", Error: locales.Text("go.internal.app.app.text022")})
 				return
 			}
 			sv.State = sv.State.Clone()
@@ -681,7 +673,7 @@ func (a *App) receiveHost(seat int, l *Link, b []byte) {
 			}
 		}
 		if e := a.store.Save(sv.State.ID, sv); e != nil {
-			_ = l.Peer.Send(Packet{Type: "error", Error: locales.Text("go.internal.app.app.text023")})
+			_ = l.send(Packet{Type: "error", Error: locales.Text("go.internal.app.app.text023")})
 			return
 		}
 		a.saved = sv
@@ -699,9 +691,9 @@ func (a *App) receiveHost(seat int, l *Link, b []byte) {
 		if e := a.commandLocked(*p.Command); e != nil {
 			a.logLocked(locales.Text("go.internal.app.app.text025"), seat+1, e)
 			v := a.viewWithAILocked(seat)
-			_ = l.Peer.Send(Packet{Type: "error", Ack: p.Command.ID, Error: e.Error(), View: &v, Connected: a.connected, Paused: a.pausedLocked(), ConnectionReasons: a.connectionReasonsLocked()})
+			_ = l.send(Packet{Type: "error", Ack: p.Command.ID, Error: e.Error(), View: &v, Connected: a.connected, Paused: a.pausedLocked(), ConnectionReasons: a.connectionReasonsLocked()})
 		} else {
-			_ = l.Peer.Send(Packet{Type: "ack", Ack: p.Command.ID})
+			_ = l.send(Packet{Type: "ack", Ack: p.Command.ID})
 		}
 	}
 	if p.Type == "voice" && p.Voice != nil && l.Auth && a.connected[seat] {
@@ -710,7 +702,6 @@ func (a *App) receiveHost(seat int, l *Link, b []byte) {
 	}
 	if l.Auth {
 		a.receiveHeartbeatLocked(l, p)
-		a.receiveProbeLocked(l, p)
 	}
 }
 func (a *App) receiveClient(l *Link, b []byte) {
@@ -737,7 +728,6 @@ func (a *App) receiveClient(l *Link, b []byte) {
 	if p.Type == "voice" && p.Voice != nil && a.validVoiceLocked(*p.Voice) && (p.Voice.To == -1 || p.Voice.To == a.saved.Seat) && p.Voice.From != a.saved.Seat {
 		a.queueVoiceLocked(*p.Voice)
 	}
-	a.receiveProbeLocked(l, p)
 	if p.Error != "" {
 		a.lastError = p.Error
 		a.logLocked(locales.Text("go.internal.app.app.text027"), p.Error)

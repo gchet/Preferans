@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"preferans/internal/game"
+	"preferans/internal/p2p"
 	"runtime"
 	"strings"
 )
@@ -32,6 +33,7 @@ type Appearance struct {
 	LogDisabled    bool            `json:"logDisabled"`
 	LogPath        string          `json:"logPath"`
 	UpdateURL      string          `json:"updateURL"`
+	NtfyServers    string          `json:"ntfyServers,omitempty"` // адреса серверов ntfy через «;»; пусто — ntfy.sh
 }
 
 func (a *App) SetName(name string) error {
@@ -94,6 +96,11 @@ func (a *App) SetAppearance(p Appearance) error {
 		return locales.Errorf("go.internal.app.appearance.text003")
 	}
 	p.migrateDeck()
+	ntfy, err := p2p.ParseNtfyServers(p.NtfyServers)
+	if err != nil {
+		return locales.Errorf("go.internal.app.appearance.ntfy_invalid", err)
+	}
+	p.NtfyServers = strings.Join(ntfy, "; ")
 	if !p.valid() {
 		return locales.Errorf("go.internal.app.appearance.text004")
 	}
@@ -133,7 +140,8 @@ func (a *App) SetAppearance(p Appearance) error {
 			_ = old.Close()
 		}
 		if next != nil {
-			a.logLocked(locales.Text("go.internal.app.appearance.text006"), iceServerSummary(a.stun))
+			a.logLocked(locales.Text("go.internal.app.appearance.text006"), "libp2p")
+			a.logZoneLocked()
 		}
 	}
 	if s := a.saved.State; s != nil && p.debugPhase(s.Stage) != a.appearance.debugPhase(s.Stage) {
@@ -148,6 +156,11 @@ func (a *App) SetAppearance(p Appearance) error {
 		}
 	}
 	a.appearance = p
+	p2p.SetNtfyServers(ntfy)
+	select {
+	case a.lobbyKick <- struct{}{}: // новые серверы — сразу заново опросить лобби
+	default:
+	}
 	if !p.Debug || (a.saved.State != nil && !p.debugPhase(a.saved.State.Stage)) {
 		if a.ai.review != nil {
 			a.cancelAILocked()

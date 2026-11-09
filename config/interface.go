@@ -15,7 +15,6 @@ var Interface struct {
 	LocalBotSearchSamples      int    `json:"localBotSearchSamples"`
 	LocalBotExactCards         int    `json:"localBotExactCards"`
 	LocalBotExactCardsLimit    int    `json:"localBotExactCardsLimit"`
-	RoomServiceURL             string `json:"roomServiceURL"`
 	RoomRequestTimeoutMs       int    `json:"roomRequestTimeoutMs"`
 	RoomPollIntervalMs         int    `json:"roomPollIntervalMs"`
 	PartyCatalogIntervalMs     int    `json:"partyCatalogIntervalMs"`

@@ -18,12 +18,10 @@ test('public build starts without personal servers and can play offline', async 
     const endpoint=new URL('/api',url).href;
     const headers={'X-Preferans-Token':new URL(url).hash.slice(1)};
     const status=(await (await page.request.post(endpoint,{headers,data:{action:'status'}})).json()).data;
-    expect(status.connectionSetup).toBe(true);
+    expect(status.connectionSetup).toBeUndefined();
     await page.request.post(endpoint,{headers,data:{action:'appearance',appearance:{...status.appearance,language:'ru'}}});
     await page.goto(url);
-    await expect(page.locator('[name="room-service-url"]')).toHaveValue('');
-    await expect(page.locator('[name="turn-server"]')).toBeVisible();
-    await expect(page.locator('[name="turn-server"]')).toHaveValue('');
+    await expect(page.locator('#connection-setup')).toHaveCount(0);
     await page.getByRole('button',{name:'Играть локально с ботами',exact:true}).click();
     await expect(page.locator('#create-form')).toBeVisible();
     await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
