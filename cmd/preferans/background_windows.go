@@ -9,12 +9,22 @@ package main
 
 static HHOOK background_hook;
 static HBRUSH background_brush;
+static HICON window_icon_big, window_icon_small;
 static LRESULT CALLBACK background_proc(int code, WPARAM wp, LPARAM lp) {
     if (code == HCBT_CREATEWND) {
         wchar_t name[64];
         if (GetClassNameW((HWND)wp, name, 64) && wcscmp(name, L"webview") == 0) {
             if (!background_brush) background_brush = CreateSolidBrush(RGB(20, 26, 35));
             SetClassLongPtrW((HWND)wp, GCLP_HBRBACKGROUND, (LONG_PTR)background_brush);
+            // webview_go берёт значок окна из ресурса IDI_APPLICATION, которого в exe нет, и окно остаётся без значка:
+            // подставляем значок приложения (ресурс 1 из native/windows/bullet.rc) для заголовка и панели задач.
+            if (!window_icon_big) {
+                HINSTANCE inst = GetModuleHandleW(NULL);
+                window_icon_big = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR);
+                window_icon_small = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+            }
+            if (window_icon_big) SetClassLongPtrW((HWND)wp, GCLP_HICON, (LONG_PTR)window_icon_big);
+            if (window_icon_small) SetClassLongPtrW((HWND)wp, GCLP_HICONSM, (LONG_PTR)window_icon_small);
         }
     }
     return CallNextHookEx(background_hook, code, wp, lp);

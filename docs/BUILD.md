@@ -76,7 +76,9 @@ python scripts/import-card-decks.py --output .build/card-preview --inkscape "C:/
 English и Woodcut закреплены по ревизиям Git. Импорт заменяет рисунки в указанном
 каталоге; сначала сохраните ручные изменения. --source позволяет выбрать свой SVG-лист.
 
-Текущая Windows-иконка: native/windows/icon.svg, icon.png и bullet.ico.
+Значок рисуется из native/windows/icon.svg (в нижней части жёлтая надпись с номером версии, сейчас 2.0):
+`node scripts/render-icons.mjs` создаёт icon.png, bullet.ico и Android-значки mipmap-* (нужен Chromium Playwright;
+если он не установлен, укажите путь к chrome.exe в переменной `ICON_BROWSER`).
 После изменения ICO пересоберите ресурс:
 
 ~~~powershell

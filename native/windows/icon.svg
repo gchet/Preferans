@@ -13,4 +13,5 @@
   </g>
   <circle cx="1024" cy="1024" r="137" fill="#fff" stroke="#ffff00" stroke-width="22"/>
   <text x="1024" y="1052" text-anchor="middle" fill="#000" font-family="Arial, sans-serif" font-size="116" font-weight="700">GC</text>
+  <text x="1024" y="1990" text-anchor="middle" font-family="'Arial Black', Arial, sans-serif" font-weight="900" font-size="720" fill="#ffe600" stroke="#003d00" stroke-width="44" stroke-linejoin="round" paint-order="stroke fill">2.0</text>
 </svg>
