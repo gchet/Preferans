@@ -37,7 +37,7 @@ func main() {
 		if e != nil {
 			log.Fatal(e)
 		}
-		name := "Preferans"
+		name := "Preferans-2" // отдельный каталог данных: версия 2.x не смешивает настройки и сохранения с 1.x
 		*data = filepath.Join(d, name)
 	}
 	a := app.New(*data)

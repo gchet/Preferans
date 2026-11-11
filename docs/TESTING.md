@@ -46,7 +46,7 @@ npm test
 node scripts/windows-smoke.mjs
 ./build.ps1 -Target Android -Emulator
 adb -s emulator-5554 install -r dist/Preferans-emulator.apk
-adb -s emulator-5554 shell am start -n com.preferans.game/.MainActivity
+adb -s emulator-5554 shell am start -n com.preferans.game.v2/com.preferans.game.MainActivity
 node scripts/android-smoke.mjs
 ~~~
 

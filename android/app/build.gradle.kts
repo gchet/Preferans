@@ -15,8 +15,9 @@ android {
     namespace = "com.preferans.game"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.preferans.game"
-        resValue("string", "app_name", russianMessages["android.app.name"] as String)
+        // Отдельный пакет: версия 2.x ставится рядом с 1.x (com.preferans.game), у каждой свои данные и обновления.
+        applicationId = "com.preferans.game.v2"
+        resValue("string", "app_name", (russianMessages["android.app.name"] as String) + " 2.0")
         manifestPlaceholders["appLabel"] = "@string/app_name"
         minSdk = 26
         targetSdk = 36

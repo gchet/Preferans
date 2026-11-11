@@ -50,7 +50,7 @@ async function mobilePage() {
     try {
       pid = execFileSync(
         adb,
-        [...args, "shell", "pidof", "com.preferans.game"],
+        [...args, "shell", "pidof", "com.preferans.game.v2"],
         { encoding: "utf8" },
       ).trim();
       return !!pid;
@@ -232,7 +232,7 @@ try {
     "shell",
     "am",
     "force-stop",
-    "com.preferans.game",
+    "com.preferans.game.v2",
   ]);
   await wait(async () => !(await host("status")).connected[1]);
   execFileSync(adb, [
@@ -241,7 +241,7 @@ try {
     "am",
     "start",
     "-n",
-    "com.preferans.game/.MainActivity",
+    "com.preferans.game.v2/com.preferans.game.MainActivity",
   ]);
   page = await mobilePage();
   mobile = mobileRPC(page);
