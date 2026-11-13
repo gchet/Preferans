@@ -31,7 +31,7 @@ test('separate web admin authenticates, shows rooms and changes password',async(
   await page.getByLabel('Пароль администратора').fill('admin');
   await page.getByRole('button',{name:'Войти',exact:true}).click();
   await expect(page.locator('.admin-room')).toHaveCount(1);
-  await expect(page.locator('.admin-table thead th')).toHaveText(['Комната','Игроки (без ботов)','Партии']);
+  await expect(page.locator('.admin-table thead th')).toHaveText(['Комната','Создатель','Игроки (без ботов)','Партии']);
   await expect(page.locator('.admin-party')).toContainText('Игроки: Лена · Игорь');
   await expect(page.locator('.admin-party')).not.toContainText('Bot secret');
   await page.locator('[data-admin-toggle]').click();
