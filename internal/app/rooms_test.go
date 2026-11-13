@@ -188,6 +188,8 @@ func TestRoomAutomaticConnectionsAndReturn(t *testing.T) {
 		t.Fatal(e)
 	}
 	waitRoom(t, func() bool { s := apps[0].Status(); return len(s.Connected) == 3 && s.Connected[1] && s.Connected[2] })
+	// Ведущий видит гостей подключёнными чуть раньше, чем гость получает состояние стола.
+	waitRoom(t, func() bool { return apps[1].Status().View != nil })
 	original := apps[1].Status().View.Seat
 	v := apps[1].Status().View
 	c := game.Command{ID: game.ID(), Revision: v.Revision, Action: "ready"}
