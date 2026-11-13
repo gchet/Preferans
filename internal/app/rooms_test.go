@@ -236,6 +236,7 @@ func TestRoomAutomaticConnectionsAndReturn(t *testing.T) {
 		t.Fatal(e)
 	}
 	waitRoom(t, func() bool { s := apps[0].Status(); return len(s.Connected) == 3 && s.Connected[1] && s.Connected[2] })
+	waitRoom(t, func() bool { return apps[1].Status().View != nil })
 	if apps[1].Status().View.Seat != original {
 		t.Fatal("resumed seat changed")
 	}
