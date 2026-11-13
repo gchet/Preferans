@@ -117,6 +117,9 @@ func (a *App) SetAppearance(p Appearance) error {
 	path := a.logPath
 	if runtime.GOOS == "windows" && !a.logOverride {
 		path = p.LogPath
+		if path == "" {
+			path = a.defaultLogPath
+		}
 	}
 	changeLog := path != a.logPath || p.LogDisabled != a.appearance.LogDisabled || (!p.LogDisabled && path != "" && a.logFile == nil)
 	var next *os.File

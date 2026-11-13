@@ -2184,3 +2184,43 @@ test("four seats around the score sheet", async ({ page }) => {
     });
   }
 });
+
+test('rooms: management table shows creator and history, actions only on own rooms',async({page})=>{
+  await page.setViewportSize({width:1200,height:800});
+  const now=Math.floor(Date.now()/1000);
+  const catalog=[
+    {id:'mine',name:'Моя комната',creator:'me',creatorName:'Гена',created:now-86400,members:[{id:'me',name:'Гена',slot:0,online:true}],parties:[
+      {id:'p1',host:'me',players:[{id:'me',name:'Гена',bot:false},{id:'f',name:'Лена',bot:false},{id:'',name:'Бот',bot:true}],stage:'finished',round:12,startedAt:now-7200,finishedAt:now-3600,updatedAt:now-3600},
+      {id:'p2',host:'f',players:[{id:'f',name:'Лена',bot:false},{id:'me',name:'Гена',bot:false},{id:'x',name:'Игорь',bot:false}],stage:'play',round:3,startedAt:now-600,finishedAt:0,updatedAt:now-60},
+    ]},
+    {id:'theirs',name:'Чужая',creator:'other',creatorName:'Игорь',created:now-3600,members:[],parties:[]},
+    {id:'old',name:'Старая',members:[]},
+  ];
+  const deleted:string[]=[];
+  await page.route('**/api',async route=>{
+    const req=route.request().postDataJSON();
+    if(req.action==='rooms-list')return route.fulfill({json:{data:{rooms:catalog}}});
+    if(req.action==='rooms-delete'){deleted.push(req.id);return route.fulfill({json:{data:{}}});}
+    const response=await route.fetch(),body=await response.json();
+    if(req.action==='status')Object.assign(body.data,{roomMode:true,connectionSetup:false,room:null,roomSelf:'me',roomOnline:true});
+    await route.fulfill({response,json:body});
+  });
+  await page.goto(url);
+  await page.getByText('Управление комнатами',{exact:true}).click();
+  const rows=page.locator('.rooms-table tbody tr');
+  await expect(rows).toHaveCount(3);
+  await expect(page.locator('.rooms-table th')).toHaveText(['Комната','Создатель','Участники','История партий','Действия']);
+  await expect(rows.nth(0)).toContainText('Гена');
+  await expect(rows.nth(0)).toContainText('(вы)');
+  await expect(rows.nth(0)).toContainText('Партий: 2, завершено: 1');
+  await rows.nth(0).locator('summary').click();
+  await expect(rows.nth(0)).toContainText('Ведущий: Лена');
+  await expect(rows.nth(0)).toContainText('Игроки: Лена · Гена · Игорь');
+  await expect(rows.nth(1)).toContainText('Игорь');
+  await expect(rows.nth(1).locator('[data-room-action]')).toHaveCount(0);
+  await expect(rows.nth(0).locator('[data-room-action]')).toHaveCount(2);
+  await expect(rows.nth(2).locator('[data-room-action]')).toHaveCount(2);
+  await rows.nth(0).locator('[data-room-action="delete"]').click();
+  await page.locator('dialog button.primary, dialog button:has-text("Удалить")').last().click();
+  await expect.poll(()=>deleted).toEqual(['mine']);
+});

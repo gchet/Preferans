@@ -14,6 +14,9 @@ type RoomSnap struct {
 	ID             string   `json:"id"`
 	Name           string   `json:"name,omitempty"`
 	Updated        int64    `json:"updated,omitempty"`
+	Created        int64    `json:"created,omitempty"`
+	Creator        string   `json:"creator,omitempty"`
+	CreatorName    string   `json:"creatorName,omitempty"`
 	Deleted        bool     `json:"deleted,omitempty"`
 	DeletedParties []string `json:"deletedParties,omitempty"`
 	Parties        []Party  `json:"parties,omitempty"`
@@ -31,6 +34,7 @@ func (s *Server) snapshot() []RoomSnap {
 		snap := RoomSnap{ID: r.ID, Updated: r.Updated, Deleted: r.Deleted}
 		if !r.Deleted {
 			snap.Name = r.Name
+			snap.Created, snap.Creator, snap.CreatorName = r.Created, r.Creator, r.CreatorName
 			snap.Parties = append([]Party(nil), r.Parties...)
 			for i := range snap.Parties {
 				snap.Parties[i].Players = append([]PartyPlayer(nil), snap.Parties[i].Players...)
@@ -120,7 +124,11 @@ func (s *Server) mergeLocked(in []RoomSnap) (int, error) {
 			r = &Room{ID: sn.ID, Name: strings.TrimSpace(sn.Name), Updated: sn.Updated, Members: []Member{}}
 			s.Catalog[sn.ID] = r
 			changed[sn.ID] = true
-		} else if sn.Updated > r.Updated && validName(sn.Name, 40) && strings.TrimSpace(sn.Name) != r.Name {
+		}
+		if mergeCreator(r, sn) {
+			changed[sn.ID] = true
+		}
+		if sn.Updated > r.Updated && validName(sn.Name, 40) && strings.TrimSpace(sn.Name) != r.Name {
 			r.Name, r.Updated = strings.TrimSpace(sn.Name), sn.Updated
 			changed[sn.ID] = true
 		}
@@ -183,6 +191,25 @@ func (s *Server) mergeLocked(in []RoomSnap) (int, error) {
 		return 0, err
 	}
 	return len(changed), nil
+}
+
+// mergeCreator дописывает создателя комнаты из чужого снимка. Если создатели разошлись, побеждает
+// записанный раньше (при равенстве — меньший идентификатор): так выбирают все реплики одинаково.
+func mergeCreator(r *Room, sn RoomSnap) bool {
+	if sn.Creator == "" || len(sn.Creator) > 128 {
+		return false
+	}
+	if r.Creator != "" {
+		if r.Creator == sn.Creator || r.Created == 0 && sn.Created == 0 {
+			return false
+		}
+		older := sn.Created > 0 && (r.Created == 0 || sn.Created < r.Created || sn.Created == r.Created && sn.Creator < r.Creator)
+		if !older {
+			return false
+		}
+	}
+	r.Creator, r.Created, r.CreatorName = sn.Creator, sn.Created, trimRunes(sn.CreatorName, 24)
+	return true
 }
 
 // resolveNames: после слияния две живые комнаты могли получить одно название. Проигрывает комната с большим ID

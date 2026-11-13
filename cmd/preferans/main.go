@@ -51,6 +51,10 @@ func main() {
 		}
 	}
 	if !*headless {
+		// журнал по умолчанию: без своего пути в настройках и без -c он пишется в каталог данных
+		if e := a.UseDefaultLog(filepath.Join(*data, "preferans.log")); e != nil {
+			log.Printf("%v", e)
+		}
 		a.EnableLobby() // публичное лобби: игроки ничего не вводят
 	}
 	url, stop, e := app.Serve(a, web.Files())

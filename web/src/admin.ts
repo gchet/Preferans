@@ -1,6 +1,7 @@
 import {t,locale} from './i18n';
 import {interfaceConfig} from './interface-config';
 import type {Room} from './rooms';
+import {creatorHTML} from './rooms-table';
 import {confirmDialog} from './confirm-dialog';
 
 type RPC=<T=unknown>(action:string,params?:Record<string,unknown>)=>Promise<T>;
@@ -57,7 +58,7 @@ export class AdminUI {
       root.querySelector('#admin-status')!.textContent=!out.adminCatalog || !out.adminDelete?t('web.admin.server_update'):t('web.admin.updated',{p0:new Date().toLocaleTimeString(locale)});
       const rooms=out.rooms || [];
       this.partyTexts.clear();
-      root.querySelector('#admin-rooms')!.innerHTML=rooms.length?`<div class="admin-table-scroll"><table class="admin-table"><thead><tr><th>${t('web.admin.room')}</th><th>${t('web.admin.players')}</th><th>${t('web.admin.parties')}</th></tr></thead><tbody>${rooms.map(room=>this.roomHTML(room)).join('')}</tbody></table></div>`:`<p>${t('web.admin.no_rooms')}</p>`;
+      root.querySelector('#admin-rooms')!.innerHTML=rooms.length?`<div class="admin-table-scroll"><table class="admin-table"><thead><tr><th>${t('web.admin.room')}</th><th>${t('web.rooms.col_creator')}</th><th>${t('web.admin.players')}</th><th>${t('web.admin.parties')}</th></tr></thead><tbody>${rooms.map(room=>this.roomHTML(room)).join('')}</tbody></table></div>`:`<p>${t('web.admin.no_rooms')}</p>`;
     }catch(error){
       if(this.root===root && root.isConnected)root.querySelector('#admin-status')!.textContent=t('web.admin.failed',{p0:String(error)});
     }finally{
@@ -130,7 +131,7 @@ export class AdminUI {
     if(table && !parties.some(p=>p.id===table.id))parties.unshift({id:table.id,host:table.host,players:table.players.map((id,i)=>({id,name:room.members.find(m=>m.id===id)?.name || (i===0?table.name:'—'),bot:table.bots[i]})),stage:'unknown',round:0,startedAt:0,finishedAt:0,updatedAt:0});
     parties.sort((a,b)=>Number(b.id===table?.id)-Number(a.id===table?.id) || b.updatedAt-a.updatedAt);
     const collapsed=this.collapsedRooms.has(room.id);
-    return `<tr class="admin-room"><td><div class="admin-item-heading"><button type="button" class="admin-room-toggle" data-admin-toggle="${esc(room.id)}" aria-expanded="${!collapsed}" title="${t(collapsed?'web.admin.expand':'web.admin.collapse')}"><span class="admin-room-arrow" aria-hidden="true">${collapsed?'▸':'▾'}</span><strong>${esc(room.name)}</strong></button>${this.deleteButton('room',room,room.id,room.name)}</div></td><td><span class="muted" data-admin-summary ${collapsed?'':'hidden'}>${room.members.length}</span><div data-admin-detail ${collapsed?'hidden':''}>${room.members.length?`<ul class="admin-members">${room.members.map(m=>`<li><div><strong>${esc(m.name)}</strong><small class="admin-device muted">${esc(m.id.slice(0,8))}</small><span class="${m.online?'':'muted'}">${t(m.online?'web.admin.online':'web.admin.offline')}</span></div>${this.deleteButton('player',room,m.id,`${m.name} (${m.id.slice(0,8)})`)}</li>`).join('')}</ul>`:`<p class="muted">${t('web.admin.no_players')}</p>`}</div></td><td><span class="muted" data-admin-summary ${collapsed?'':'hidden'}>${parties.length}</span><div data-admin-detail ${collapsed?'hidden':''}>${parties.length?parties.map(p=>{
+    return `<tr class="admin-room"><td><div class="admin-item-heading"><button type="button" class="admin-room-toggle" data-admin-toggle="${esc(room.id)}" aria-expanded="${!collapsed}" title="${t(collapsed?'web.admin.expand':'web.admin.collapse')}"><span class="admin-room-arrow" aria-hidden="true">${collapsed?'▸':'▾'}</span><strong>${esc(room.name)}</strong></button>${this.deleteButton('room',room,room.id,room.name)}</div></td><td>${creatorHTML(room,'')}</td><td><span class="muted" data-admin-summary ${collapsed?'':'hidden'}>${room.members.length}</span><div data-admin-detail ${collapsed?'hidden':''}>${room.members.length?`<ul class="admin-members">${room.members.map(m=>`<li><div><strong>${esc(m.name)}</strong><small class="admin-device muted">${esc(m.id.slice(0,8))}</small><span class="${m.online?'':'muted'}">${t(m.online?'web.admin.online':'web.admin.offline')}</span></div>${this.deleteButton('player',room,m.id,`${m.name} (${m.id.slice(0,8)})`)}</li>`).join('')}</ul>`:`<p class="muted">${t('web.admin.no_players')}</p>`}</div></td><td><span class="muted" data-admin-summary ${collapsed?'':'hidden'}>${parties.length}</span><div data-admin-detail ${collapsed?'hidden':''}>${parties.length?parties.map(p=>{
       const active=p.id===table?.id;
       const state=p.stage==='finished'?'web.admin.finished':active?'web.admin.active':'web.admin.saved';
       const host=p.players.find(player=>player.id===p.host)?.name || '—';

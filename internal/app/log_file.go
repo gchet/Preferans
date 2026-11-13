@@ -40,5 +40,6 @@ func (a *App) ClearLogFile() error {
 		}
 	}
 	a.logs = nil
+	a.logBytes = 0
 	return nil
 }

@@ -1,7 +1,9 @@
 import {t} from './i18n';
 import {voiceIcon} from './voice';
 import {confirmDialog} from './confirm-dialog';
-export interface Room {id:string;name:string;members:{id:string;name:string;slot:number;online:boolean}[];table?:{id:string;host:string;name:string;players:string[];bots:boolean[]}}
+import {roomsTable} from './rooms-table';
+export interface RoomParty {id:string;host:string;players:{id:string;name:string;bot:boolean}[];stage:string;round:number;startedAt:number;finishedAt:number;updatedAt:number}
+export interface Room {id:string;name:string;creator?:string;creatorName?:string;created?:number;parties?:RoomParty[];members:{id:string;name:string;slot:number;online:boolean}[];table?:{id:string;host:string;name:string;players:string[];bots:boolean[]}}
 export interface RoomStatus {roomMode?:boolean;roomLocal?:boolean;appearance?:{localOnly?:boolean};room?:Room;roomSelf?:string;roomError?:string;roomOnline?:boolean;current?:boolean;connected?:boolean[];view?:{id:string;seat:number}|null}
 type RPC=<T=unknown>(action:string,params?:Record<string,unknown>)=>Promise<T>;
 const esc=(v:string)=>v.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -11,11 +13,13 @@ export class RoomUI {
   private lastLoad=0;
   private rosterKey='';
   private rejoining='';
+  private tableKey='';
+  private openHistory=new Set<string>();
   constructor(private rpc:RPC,private run:(fn:()=>Promise<void>)=>Promise<void>,private status:()=>RoomStatus,private name:()=>string){
     document.addEventListener('click',e=>{
       const b=(e.target as HTMLElement).closest<HTMLElement>('[data-room-action]');if(!b)return;
       void this.run(async()=>{
-        const op=b.dataset.roomAction!,id=(document.querySelector('#room-select') as HTMLSelectElement)?.value || '';
+        const op=b.dataset.roomAction!,id=b.dataset.roomId || (document.querySelector('#room-select') as HTMLSelectElement)?.value || '';
         const name=(document.querySelector('#room-name') as HTMLInputElement)?.value.trim() || '';
         if(op==='local'){
           const player=document.querySelector<HTMLInputElement>('#room-player-name, #create-form [name="name"]')?.value || this.name();
@@ -44,10 +48,20 @@ export class RoomUI {
         }
       });
     });
+    document.addEventListener('click',e=>{
+      const b=(e.target as HTMLElement).closest<HTMLElement>('[data-room-pick]');if(!b)return;
+      const r=this.rooms.find(r=>r.id===b.dataset.roomPick);if(!r)return;
+      const input=document.querySelector<HTMLInputElement>('#room-name');if(input)input.value=r.name;
+      const select=document.querySelector<HTMLSelectElement>('#room-select');if(select)select.value=r.id;
+    });
+    document.addEventListener('toggle',e=>{
+      const d=e.target as HTMLElement;const id=d.dataset?.roomHistory;if(!id)return;
+      if((d as HTMLDetailsElement).open)this.openHistory.add(id);else this.openHistory.delete(id);
+    },true);
     document.addEventListener('change',e=>{if((e.target as HTMLElement).id==='room-select'){const r=this.rooms.find(r=>r.id===(e.target as HTMLSelectElement).value);const input=document.querySelector<HTMLInputElement>('#room-name');if(r&&input)input.value=r.name}});
   }
   picker(container:HTMLElement){
-    if(!document.querySelector('#room-picker'))container.innerHTML=`<section id="room-picker" class="surface"><h1>${t("web.rooms.text011")}</h1><label>${t("web.connection_setup.text008")}<input id="room-player-name" maxlength="24" value="${esc(this.name())}"></label><label>${t("web.rooms.text012")}<select id="room-select"><option value="">${t("web.main.text071")}</option></select></label><div class="toolbar"><button type="button" class="primary" data-room-action="enter">${t("web.rooms.text013")}</button><button type="button" data-room-action="refresh">${t("web.rooms.text014")}</button></div><details><summary>${t("web.rooms.text015")}</summary><label>${t("web.rooms.text016")}<input id="room-name" maxlength="40" placeholder="${t("web.rooms.text017")}"></label><div class="toolbar"><button type="button" data-room-action="create">${t("web.rooms.text018")}</button><button type="button" data-room-action="rename">${t("web.rooms.text019")}</button><button type="button" data-room-action="delete">${t("web.rooms.text020")}</button></div></details><p id="room-directory-error" role="status"></p></section>`;
+    if(!document.querySelector('#room-picker'))container.innerHTML=`<section id="room-picker" class="surface"><h1>${t("web.rooms.text011")}</h1><label>${t("web.connection_setup.text008")}<input id="room-player-name" maxlength="24" value="${esc(this.name())}"></label><label>${t("web.rooms.text012")}<select id="room-select"><option value="">${t("web.main.text071")}</option></select></label><div class="toolbar"><button type="button" class="primary" data-room-action="enter">${t("web.rooms.text013")}</button><button type="button" data-room-action="refresh">${t("web.rooms.text014")}</button></div><details><summary>${t("web.rooms.text015")}</summary><label>${t("web.rooms.text016")}<input id="room-name" maxlength="40" placeholder="${t("web.rooms.text017")}"></label><div class="toolbar"><button type="button" data-room-action="create">${t("web.rooms.text018")}</button></div><p class="muted" id="room-manage-hint">${t("web.rooms.manage_hint")}</p><div id="room-table"></div></details><p id="room-directory-error" role="status"></p></section>`;
     if(!document.querySelector('#room-connection-error'))document.querySelector('#room-picker')!.insertAdjacentHTML('beforeend','<p id="room-connection-error" role="status"></p>');
     if(!document.querySelector('#room-picker [data-room-action="local"]'))document.querySelector('#room-picker')!.insertAdjacentHTML('beforeend',`<button type="button" data-room-action="local">${t('web.local.play')}</button>`);
     if(Date.now()-this.lastLoad>5000)void this.load();
@@ -58,9 +72,17 @@ export class RoomUI {
       const out=await this.rpc<{rooms:Room[]}>('rooms-list');this.rooms=out.rooms || [];
       const select=document.querySelector<HTMLSelectElement>('#room-select');
       if(select){const old=selected || select.value;select.innerHTML=this.rooms.length?this.rooms.map(r=>`<option value="${esc(r.id)}">${esc(r.name)} · ${r.members.filter(m=>m.online).length}/4${r.table?t("web.rooms.text010"):''}</option>`).join(''):`<option value="">${t("web.rooms.text009")}</option>`;if(this.rooms.some(r=>r.id===old))select.value=old;}
+      this.paintTable();
       const error=document.querySelector('#room-directory-error');if(error)error.textContent='';
     }catch(e){const error=document.querySelector('#room-directory-error');if(error)error.textContent=String(e);}
     finally{this.loading=false;}
+  }
+  private paintTable(){
+    const box=document.querySelector<HTMLElement>('#room-table');if(!box)return;
+    const self=this.status().roomSelf || '';
+    const key=JSON.stringify([this.rooms,self,[...this.openHistory]]);
+    if(key===this.tableKey&&box.childElementCount)return;
+    this.tableKey=key;box.innerHTML=roomsTable(this.rooms,self,this.openHistory);
   }
   async settings(selected:string){
     await this.load();const el=document.querySelector<HTMLSelectElement>('[name="default-room"]');if(!el)return;

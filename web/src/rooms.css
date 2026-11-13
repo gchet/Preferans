@@ -1,4 +1,4 @@
-#room-picker { max-width: 720px; margin: 12px auto; padding: clamp(14px,3vh,32px); }
+#room-picker { max-width: 960px; margin: 12px auto; padding: clamp(14px,3vh,32px); }
 #room-picker h1 { font-size: clamp(24px,4vh,38px); }
 #room-picker details { margin-top: 14px; }
 #room-picker .toolbar { flex-wrap: wrap; }
@@ -17,3 +17,18 @@ body.at-table .player.connection-lost, body.at-table .hand-area.connection-lost,
 body:has(#room-roster) .welcome { display:none; }
 body:has(#room-roster) .start-grid { margin-top:0; }
 @media(max-height:650px) { .room-member {padding:4px 8px;} #room-roster{margin-bottom:4px;} #room-roster p{font-size:12px;} }
+.rooms-table .muted,#room-manage-hint { color:var(--muted); }
+.rooms-table-scroll { overflow-x:auto; margin-top:10px; }
+.rooms-table { width:100%; min-width:720px; border-collapse:collapse; font-size:.92em; }
+.rooms-table th,.rooms-table td { padding:8px 10px; vertical-align:top; text-align:left; border:1px solid rgba(255,255,255,.2); overflow-wrap:anywhere; }
+.rooms-table th { white-space:nowrap; }
+.rooms-table small { display:block; }
+.rooms-table summary { cursor:pointer; }
+.rooms-table em { color:var(--accent); font-style:normal; font-weight:600; }
+.rooms-pick { display:block; padding:2px 0; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; text-decoration:underline dotted; }
+.rooms-device { font-family:monospace; }
+.rooms-members { list-style:none; margin:0; padding:0; }
+.rooms-party { padding:8px 0; border-top:1px solid rgba(255,255,255,.15); }
+.rooms-party:first-of-type { margin-top:6px; }
+.rooms-actions { display:flex; flex-wrap:wrap; gap:6px; }
+#room-manage-hint { font-size:.9em; margin:8px 0 0; }

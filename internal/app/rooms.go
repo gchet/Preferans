@@ -105,6 +105,9 @@ func (a *App) roomRequest(q rooms.Request) (rooms.Response, error) {
 	if q.Name == "" && (q.Op == "join" || q.Op == "poll") {
 		q.Name = a.appearance.Name
 	}
+	if q.Op == "create" && q.PlayerName == "" {
+		q.PlayerName = a.appearance.Name
+	}
 	a.mu.Unlock()
 	out, e := a.roomCall(u, q)
 	if e != nil {

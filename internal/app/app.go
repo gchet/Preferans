@@ -81,6 +81,9 @@ type App struct {
 	logFile           *os.File
 	logPath           string
 	logOverride       bool
+	defaultLogPath    string
+	logCounted        *os.File
+	logBytes          int64
 	node              *p2p.Node
 	nodeErr           error
 	nodeOnce          sync.Once
@@ -340,9 +343,7 @@ func (a *App) logLocked(format string, args ...any) {
 	if len(a.logs) > 240 {
 		a.logs = a.logs[len(a.logs)-240:]
 	}
-	if a.logFile != nil {
-		_, _ = fmt.Fprintln(a.logFile, line)
-	}
+	a.writeLogLineLocked(line)
 }
 
 func (a *App) DeleteSave(id string) error {

@@ -46,6 +46,10 @@ type Room struct {
 	DeletedParties map[string]bool `json:"deletedParties,omitempty"`
 	ID             string          `json:"id"`
 	Updated        int64           `json:"updated,omitempty"`
+	Created        int64           `json:"created,omitempty"`
+	// Creator — идентификатор устройства создателя; пустой у комнат, созданных до появления этого поля.
+	Creator        string          `json:"creator,omitempty"`
+	CreatorName    string          `json:"creatorName,omitempty"`
 	Name           string          `json:"name"`
 	Members        []Member        `json:"members"`
 	Table          *Table          `json:"table,omitempty"`
@@ -70,6 +74,8 @@ type Request struct {
 	Secret    string  `json:"secret"`
 	Room      string  `json:"room"`
 	Name      string  `json:"name"`
+	// PlayerName — имя игрока, создающего комнату (сохраняется как имя создателя).
+	PlayerName string `json:"playerName,omitempty"`
 	After     uint64  `json:"after"`
 	Epoch     string  `json:"epoch"`
 	Table     *Table  `json:"table,omitempty"`
@@ -152,6 +158,33 @@ func copyRoom(r *Room) *Room {
 	}
 	return &c
 }
+// ownedBy: переименовать и удалить комнату может только создатель. Комнаты без записанного создателя
+// (созданные прежними версиями) доступны всем.
+func ownedBy(r *Room, id string) bool { return r.Creator == "" || r.Creator == id }
+
+func trimRunes(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > max {
+		return string(r[:max])
+	}
+	return s
+}
+
+// historyLimit — сколько последних партий каждой комнаты видит обычный игрок в справочнике комнат.
+const historyLimit = 100
+
+func recentParties(parties []Party, limit int) []Party {
+	out := append([]Party(nil), parties...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt > out[j].UpdatedAt })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	for i := range out {
+		out[i].Players = append([]PartyPlayer(nil), out[i].Players...)
+	}
+	return out
+}
+
 func member(r *Room, id string) int {
 	for i, m := range r.Members {
 		if m.ID == id {
@@ -227,9 +260,11 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 			room := copyRoom(r)
 			if admin {
 				room.Parties = append([]Party(nil), r.Parties...)
-			}
-			for i := range room.Parties {
-				room.Parties[i].Players = append([]PartyPlayer(nil), room.Parties[i].Players...)
+				for i := range room.Parties {
+					room.Parties[i].Players = append([]PartyPlayer(nil), room.Parties[i].Players...)
+				}
+			} else {
+				room.Parties = recentParties(r.Parties, historyLimit)
 			}
 			out.Rooms = append(out.Rooms, *room)
 		}
@@ -255,6 +290,7 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 			}
 		}
 		r := &Room{ID: game.ID(), Name: name, Updated: s.now().Unix(), Members: []Member{}}
+		r.Created, r.Creator, r.CreatorName = r.Updated, id, trimRunes(q.PlayerName, 24)
 		s.Catalog[r.ID] = r
 		if e := s.save(); e != nil {
 			delete(s.Catalog, r.ID)
@@ -274,6 +310,9 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 		return out, locales.Errorf("go.internal.rooms.rooms.text005")
 	}
 	if q.Op == "rename" {
+		if !ownedBy(r, id) {
+			return out, locales.Errorf("go.rooms.not_creator")
+		}
 		if len([]rune(name)) < 1 || len([]rune(name)) > 40 {
 			return out, locales.Errorf("go.internal.rooms.rooms.text006")
 		}
@@ -293,6 +332,9 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 		return out, nil
 	}
 	if q.Op == "delete" {
+		if !ownedBy(r, id) {
+			return out, locales.Errorf("go.rooms.not_creator")
+		}
 		if r.Table != nil {
 			return out, locales.Errorf("go.internal.rooms.rooms.text008")
 		}

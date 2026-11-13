@@ -17,9 +17,10 @@ summary { cursor:pointer; }
 .admin-warning { color:#ffe2a0; }
 .muted { color:#9fb2c5; }
 .admin-table-scroll { overflow-x:auto; margin-top:16px; }
-.admin-table { width:100%; min-width:560px; border-collapse:collapse; table-layout:fixed; }
+.admin-table { width:100%; min-width:760px; border-collapse:collapse; table-layout:fixed; }
 .admin-table th,.admin-table td { padding:12px; vertical-align:top; text-align:left; border:1px solid var(--line); overflow-wrap:anywhere; }
-.admin-table th:first-child { width:22%; } .admin-table th:nth-child(2) { width:28%; }
+.admin-table th:first-child { width:20%; } .admin-table th:nth-child(2) { width:16%; } .admin-table th:nth-child(3) { width:24%; }
+.admin-table small { display:block; }
 .admin-item-heading { display:flex; justify-content:space-between; align-items:start; gap:8px; }
 .admin-delete { flex:0 0 auto; width:34px; height:34px; padding:0; font-size:24px; line-height:1; }
 .danger { background:#693641; border-color:#bc7180; }

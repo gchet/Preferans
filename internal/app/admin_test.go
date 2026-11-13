@@ -37,10 +37,9 @@ func TestAdminPublishesSavedPartiesForAllRooms(t *testing.T) {
 	if len(out.Rooms) != 2 {
 		t.Fatal("missing rooms")
 	}
-	for _, room := range out.Rooms {
-		if len(room.Parties) != 0 {
-			t.Fatal("public client sees admin catalog")
-		}
+	// Игроки видят историю партий (последние), но удалять элементы каталога может только администратор.
+	if out.AdminDelete {
+		t.Fatal("public client has admin rights")
 	}
 	out, err = directory.HandleAdmin(rooms.Request{Op: "list", Secret: secret})
 	if err != nil {
