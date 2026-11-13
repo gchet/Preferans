@@ -41,6 +41,22 @@ type roomState struct {
 	busy       bool
 	closing    bool
 	nextClose  time.Time
+	failures   int       // подряд неудачных опросов комнаты
+	retryAt    time.Time // раньше этого момента опрос не повторяется (пауза растёт при сбоях)
+}
+
+// roomBackoff — пауза до следующего опроса комнаты после failures неудач подряд: 2, 4, 8 с (не больше, чтобы
+// участник не считался «не в сети» дольше RoomOnlineTimeoutMs после возвращения связи).
+func roomBackoff(failures int) time.Duration {
+	base := time.Duration(config.Interface.RoomPollIntervalMs) * time.Millisecond
+	d := base
+	for i := 0; i < failures && d < 8*time.Second; i++ {
+		d *= 2
+	}
+	if d > 8*time.Second {
+		d = 8 * time.Second
+	}
+	return d
 }
 
 func (r *roomState) identity() string { return rooms.Identity(r.config.Secret) }
@@ -167,6 +183,7 @@ func (a *App) EnterRoom(id string) error {
 	a.rooms.cursor = out.Cursor
 	a.rooms.epoch = out.Epoch
 	a.rooms.err = ""
+	a.rooms.failures, a.rooms.retryAt = 0, time.Time{}
 	a.rooms.seen = time.Now()
 	a.voiceQueue = nil
 	a.rooms.attempts = map[string]time.Time{}
@@ -396,6 +413,12 @@ func (a *App) roomTick() {
 	if id == "" || id == localRoomID {
 		return
 	}
+	a.mu.Lock()
+	wait := time.Now().Before(a.rooms.retryAt)
+	a.mu.Unlock()
+	if wait {
+		return
+	}
 	out, e := a.roomRequest(q)
 	a.mu.Lock()
 	if generation != a.rooms.generation || id != a.rooms.config.Current {
@@ -405,10 +428,13 @@ func (a *App) roomTick() {
 	if e != nil {
 		a.logRoomErrorLocked(e)
 		a.rooms.err = e.Error()
+		a.rooms.failures++
+		a.rooms.retryAt = time.Now().Add(roomBackoff(a.rooms.failures))
 		a.mu.Unlock()
 		return
 	}
 	a.rooms.err = ""
+	a.rooms.failures, a.rooms.retryAt = 0, time.Time{}
 	a.rooms.seen = time.Now()
 	a.rooms.room = out.Room
 	// A close queued locally must not recreate its old table in the UI.

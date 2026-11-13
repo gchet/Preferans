@@ -68,6 +68,6 @@ Workflow `.github/workflows/release.yml` собирает приложения �
   постоянного ключа (например, `~/.android/debug.keystore`) в секрет репозитория
   `DEBUG_KEYSTORE_B64`. Без секрета workflow выдаёт предупреждение, а APK подписывается
   одноразовым ключом.
-- Номер версии лежит в файле `VERSION` (сейчас 2.0.1): `build.ps1` берёт его, если не задан `-VersionName`,
+- Номер версии лежит в файле `VERSION` (сейчас 2.0.2): `build.ps1` берёт его, если не задан `-VersionName`,
   а workflow проверяет, что тег (`vX.Y.Z`) совпадает с ним.
 - Локально MinGW-w64 подключается параметром `-Mingw <каталог bin>` скрипта `build.ps1` (или `tools.mingw` в `project.local.json`).

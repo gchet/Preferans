@@ -250,6 +250,7 @@ func (a *App) applyLobbyService(url, hostID string) {
 func (a *App) NetworkChanged() {
 	a.mu.Lock()
 	node := a.node
+	a.rooms.failures, a.rooms.retryAt = 0, time.Time{} // сеть изменилась: опрос комнаты без паузы
 	a.mu.Unlock()
 	if node == nil {
 		return

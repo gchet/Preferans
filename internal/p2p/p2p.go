@@ -58,6 +58,7 @@ type Node struct {
 	cfg    Config
 	advert bool
 	cs     convSet
+	lan    lanTries
 	netMu  sync.Mutex
 	netAt  time.Time
 	since  int64
@@ -117,7 +118,9 @@ func NewNode(cfg Config) (*Node, error) {
 			libp2p.UDPBlackHoleSuccessCounter(nil),
 			libp2p.IPv6BlackHoleSuccessCounter(nil),
 			libp2p.EnableRelay(),
-			libp2p.EnableHolePunching(holepunch.WithTracer(hpTracer{n})),
+			libp2p.EnableHolePunching(holepunch.WithTracer(hpTracer{n}), holepunch.WithAddrFilter(&samePublicFilter{ours: n.publicIPs, note: func(id peer.ID) {
+					n.logf("пробитие NAT с %s не нужно: общий публичный IP (одна сеть), ищем путь по локальной сети", short(id))
+				}})),
 			libp2p.EnableAutoNATv2(),
 			libp2p.EnableAutoRelayWithPeerSource(peerSource, autorelay.WithMinCandidates(2), autorelay.WithNumRelays(2), autorelay.WithBootDelay(0)),
 		}
@@ -415,8 +418,10 @@ func (n *Node) Dial(ctx context.Context, inv Invite) (*Conn, error) {
 	}
 	n.forgetBackoffFor(inv)
 	direct, relay := splitAddrs(inv.Addrs)
-	if all := len(direct); all > 0 && !n.cfg.LoopbackOnly {
-		if direct = reachableDirect(direct, outboundIP()); len(direct) < all {
+	var skipped []string
+	if all := len(direct); all > 0 && !n.cfg.LoopbackOnly && !inviteSharesNAT(n.publicIPs(), direct) {
+		outIP := outboundIP()
+		if direct, skipped = splitReachable(direct, outIP, interfaceMask(outIP)); len(direct) < all {
 			n.logf("адреса локальной сети партнёра %s из другой подсети пропущены: %d из %d", short(id), all-len(direct), all)
 		}
 	}
@@ -447,6 +452,9 @@ func (n *Node) Dial(ctx context.Context, inv Invite) (*Conn, error) {
 			return nil, fmt.Errorf("соединение через relay: %w", err)
 		}
 		n.logf("подключение к %s через relay (прямое пока не получилось)", short(id))
+			if len(skipped) > 0 && !n.cfg.LoopbackOnly {
+				go n.tryRoutedLAN(id, skipped)
+			}
 	}
 	s, err := n.h.NewStream(network.WithAllowLimitedConn(ctx, "preferans"), id, Protocol)
 	if err != nil {

@@ -125,21 +125,60 @@ func isVirtualInterface(name string) bool {
 // (телефон в LTE, партнёр в домашнем Wi-Fi). Попытка к ним ждёт таймаут (~5 с) при каждом восстановлении связи.
 // Публичные адреса и IPv6 остаются. Если свой адрес неизвестен, список не меняется.
 func reachableDirect(direct []string, outIP net.IP) []string {
+	keep, _ := splitReachable(direct, outIP, nil)
+	return keep
+}
+
+// splitReachable делит прямые адреса партнёра на достижимые и пропущенные (локальная сеть из другой подсети).
+// mask — маска нашей сети: если известна, сравнивается точная подсеть; иначе (Android не отдаёт интерфейсы)
+// грубо — по первым двум октетам.
+func splitReachable(direct []string, outIP net.IP, mask net.IPMask) (keep, skipped []string) {
 	out4 := outIP.To4()
 	if out4 == nil {
-		return direct
+		return direct, nil
 	}
-	var out []string
 	for _, s := range direct {
 		parts := strings.Split(s, "/")
 		if len(parts) > 2 && parts[1] == "ip4" {
 			if ip := net.ParseIP(parts[2]).To4(); ip != nil && (ip.IsPrivate() || ip[0] == 100 && ip[1]&0xc0 == 64) {
-				if ip[0] != out4[0] || ip[1] != out4[1] { // грубо: совпадают первые два октета
+				same := ip[0] == out4[0] && ip[1] == out4[1]
+				if len(mask) == net.IPv4len {
+					same = ip.Mask(mask).Equal(out4.Mask(mask))
+				}
+				if !same {
+					skipped = append(skipped, s)
 					continue
 				}
 			}
 		}
-		out = append(out, s)
+		keep = append(keep, s)
 	}
-	return out
+	return keep, skipped
+}
+
+// interfaceMask возвращает маску сети, к которой принадлежит наш адрес ip (nil, если интерфейсы недоступны).
+func interfaceMask(ip net.IP) net.IPMask {
+	if ip.To4() == nil {
+		return nil
+	}
+	ifs, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, ifc := range ifs {
+		addrs, err := ifc.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.Equal(ip) {
+				if m := ipn.Mask; len(m) == net.IPv6len {
+					return m[12:]
+				} else if len(m) == net.IPv4len {
+					return m
+				}
+			}
+		}
+	}
+	return nil
 }
