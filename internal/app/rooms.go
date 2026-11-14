@@ -4,6 +4,7 @@ import "preferans/locales"
 
 import (
 	"encoding/json"
+	"errors"
 	"preferans/config"
 	"preferans/internal/game"
 	"os"
@@ -67,6 +68,9 @@ func cloneRoom(r *rooms.Room) *rooms.Room {
 	b, _ := json.Marshal(r)
 	var c rooms.Room
 	_ = json.Unmarshal(b, &c)
+	if c.Members == nil {
+		c.Members = []rooms.Member{}
+	}
 	return &c
 }
 func (a *App) inRoom() bool { a.mu.Lock(); defer a.mu.Unlock(); return a.rooms.config.Current != "" }
@@ -127,13 +131,24 @@ func (a *App) roomRequest(q rooms.Request) (rooms.Response, error) {
 	a.mu.Unlock()
 	out, e := a.roomCall(u, q)
 	if e != nil {
-		return out, locales.Errorf("go.internal.app.rooms.text001", e)
+		var answer errString
+		if errors.As(e, &answer) {
+			return out, e // ответ самого сервиса (например, «удалять может только создатель»), а не потеря связи
+		}
+		return out, &roomUnavailableError{cause: e}
 	}
 	a.applyAdminRemovals(q.Room, out)
 	return out, nil
 }
 func (a *App) RoomDirectory(op, id, name string) (rooms.Response, error) {
-	return a.roomRequest(rooms.Request{Op: op, Room: id, Name: name})
+	out, e := a.roomRequest(rooms.Request{Op: op, Room: id, Name: name})
+	var unavailable *roomUnavailableError
+	if errors.As(e, &unavailable) {
+		a.mu.Lock()
+		a.logRoomErrorLocked(e)
+		a.mu.Unlock()
+	}
+	return out, e
 }
 func (a *App) EnterRoom(id string) error {
 	a.roomControl.Lock()
@@ -701,7 +716,8 @@ var digitsRE = regexp.MustCompile(`[0-9]+`)
 // каждую секунду, и одна и та же ошибка (с разными адресами и портами в тексте) заполняла журнал мегабайтами.
 // Новая ошибка пишется сразу, повтор — не чаще раза в минуту, с числом пропущенных повторов.
 func (a *App) logRoomErrorLocked(e error) {
-	key := e.Error()
+	detail := roomErrorDetail(e)
+	key := detail
 	if i := strings.IndexByte(key, '\n'); i >= 0 {
 		key = key[:i]
 	}
@@ -710,7 +726,7 @@ func (a *App) logRoomErrorLocked(e error) {
 		a.rooms.errSkipped++
 		return
 	}
-	a.logLocked(locales.Text("go.internal.app.rooms.text011"), e)
+	a.logLocked(locales.Text("go.internal.app.rooms.text011"), detail)
 	if a.rooms.errKey == key && a.rooms.errSkipped > 0 {
 		a.logLocked(locales.Text("go.internal.app.rooms.err_repeats"), a.rooms.errSkipped)
 	}

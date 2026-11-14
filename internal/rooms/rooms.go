@@ -153,6 +153,9 @@ func copyRoom(r *Room) *Room {
 	b, _ := json.Marshal(public)
 	var c Room
 	_ = json.Unmarshal(b, &c)
+	if c.Members == nil {
+		c.Members = []Member{}
+	}
 	if c.Table != nil {
 		c.Table.Keys = nil
 	}

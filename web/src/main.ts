@@ -469,8 +469,8 @@ function partyDates(v: {startedAt?: number; finishedAt?: number}): string {
 }
 function tableProgress(v: View): string {
   if (v.pausedAt) return `${t("web.main.text194")} <span>${clockText(Math.max(0,Math.floor(Date.now()/1000)-v.pausedAt))}</span><small class="pause-owner">${esc(v.aiReviewSeat!==undefined ? t("web.ai.review-pause",{p0:v.players[v.aiReviewSeat]?.name||""}) : v.manualPaused ? v.players[v.pausedBy || 0]?.name : t("web.main.text197"))}</small>`;
-  if (v.rules?.endCondition !== 'time') return `${t("web.main.text006")} <span>${v.pool.reduce((a,b)=>a+b,0)} / ${v.target*v.players.length}</span>`;
-  const seconds = v.stage === 'finished' ? 0 : v.deadline ? Math.max(0,v.deadline-Math.floor(Date.now()/1000)) : v.rules.minutes*60;
+  if (v.rules?.endCondition !== 'time') return `${t("web.main.text006")} <span>${(v.pool || []).reduce((a,b)=>a+b,0)} / ${v.target*(v.players || []).length}</span>`;
+  const seconds = v.stage === 'finished' ? 0 : v.deadline ? Math.max(0,v.deadline-Math.floor(Date.now()/1000)) : (v.rules?.minutes || 0)*60;
   return `${t("web.main.text196")} <span>${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}</span>`;
 }
 function updateBotThinking() {
@@ -1220,6 +1220,19 @@ function updateExitButtons() {
     if (button.id === 'leave') button.hidden = !status.current;
   }
 }
+let voiceRoomKeep: ReturnType<typeof roomVoice> = null;
+let voiceLostAt = 0;
+let lastReported = "";
+let lastReportedAt = 0;
+// Ошибки интерфейса попадают в журнал приложения: на экране их видно считанные секунды.
+function reportClientError(e: unknown) {
+  const text = e instanceof Error ? `${e.name}: ${e.message}\n${(e.stack || "").split("\n").slice(0, 6).join("\n")}` : String(e);
+  if (!text || (text === lastReported && Date.now() - lastReportedAt < 30000)) return;
+  lastReported = text; lastReportedAt = Date.now();
+  void rpc("client-error", { message: text }).catch(() => {});
+}
+window.addEventListener("error", ev => reportClientError(ev.error ?? ev.message));
+window.addEventListener("unhandledrejection", ev => reportClientError(ev.reason));
 let refreshing = false;
 async function refresh() {
   if (refreshing) return;
@@ -1277,7 +1290,16 @@ async function refreshState() {
   syncAISettingsTab();
   roomUI.paint();
   updateLogFileSize(s);
-  voice.sync(s.roomLocal || soloWithBots(s.view) ? {...s, view:null} : {...s,...(roomVoice(s)||{})});
+  const solo = s.roomLocal || soloWithBots(s.view);
+  let roomVoiceNow = solo ? null : roomVoice(s);
+  if (roomVoiceNow) { voiceRoomKeep = roomVoiceNow; voiceLostAt = 0; }
+  else if (!solo && voiceRoomKeep && s.room) {
+    // Комната есть, но нас в ней на миг не видно (сбой опроса сервиса комнат): не рвём голосовую сессию и не гасим
+    // микрофон. При выходе из комнаты (room == null) голос останавливается сразу.
+    if (!voiceLostAt) voiceLostAt = Date.now();
+    if (Date.now() - voiceLostAt < 10000) roomVoiceNow = voiceRoomKeep; else voiceRoomKeep = null;
+  } else voiceRoomKeep = null;
+  voice.sync(solo ? {...s, view:null} : {...s, ...(roomVoiceNow || {})});
   renderConnectionLog();
   updateExitButtons();
   if (document.querySelector('#create-form')) {
@@ -1320,6 +1342,7 @@ async function poll() {
   try {
     await refresh();
   } catch (e) {
+    reportClientError(e);
     notice(`${t("web.main.text002", {p0: String(e)})}`);
   }
   setTimeout(poll, interfaceConfig.uiPollIntervalMs);

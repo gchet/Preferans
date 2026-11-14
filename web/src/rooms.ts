@@ -69,7 +69,7 @@ export class RoomUI {
   async load(selected?:string){
     if(this.loading)return;this.loading=true;this.lastLoad=Date.now();
     try{
-      const out=await this.rpc<{rooms:Room[]}>('rooms-list');this.rooms=out.rooms || [];
+      const out=await this.rpc<{rooms:Room[]}>('rooms-list');this.rooms=(out.rooms || []).map(r=>({...r,members:r.members || []}));
       const select=document.querySelector<HTMLSelectElement>('#room-select');
       if(select){const old=selected || select.value;select.innerHTML=this.rooms.length?this.rooms.map(r=>`<option value="${esc(r.id)}">${esc(r.name)} · ${r.members.filter(m=>m.online).length}/4${r.table?t("web.rooms.text010"):''}</option>`).join(''):`<option value="">${t("web.rooms.text009")}</option>`;if(this.rooms.some(r=>r.id===old))select.value=old;}
       this.paintTable();
@@ -92,6 +92,7 @@ export class RoomUI {
   }
   paint(){
     const s=this.status(),r=s.room;
+    if(r&&!Array.isArray(r.members))r.members=[];
     if(this.rejoining && (r?.table?.id!==this.rejoining || (s.view?.id===this.rejoining && !!s.connected?.[s.view.seat] && !!s.connected?.[0])))this.rejoining='';
     if(!r){if(document.querySelector('#room-picker')){if(Date.now()-this.lastLoad>5000)void this.load();const el=document.querySelector('#room-connection-error');if(el)el.textContent=s.roomError || '';}return;}
     const box=document.querySelector('#room-roster');if(!box)return;
@@ -112,6 +113,7 @@ export class RoomUI {
 export function roomVoice(status:RoomStatus){
 	if(status.roomLocal)return null;
   const r=status.room;if(!r)return null;
-  const own=r.members.find(m=>m.id===status.roomSelf);if(!own)return null;
-  return {view:{id:r.id,seat:own.slot,players:Array.from({length:4},(_,i)=>({id:r.members.find(m=>m.slot===i)?.id,bot:!r.members.some(m=>m.slot===i)}))},connected:Array.from({length:4},(_,i)=>!!r.members.find(m=>m.slot===i)?.online)};
+  const members=r.members || [];
+  const own=members.find(m=>m.id===status.roomSelf);if(!own)return null;
+  return {view:{id:r.id,seat:own.slot,players:Array.from({length:4},(_,i)=>({id:members.find(m=>m.slot===i)?.id,bot:!members.some(m=>m.slot===i)}))},connected:Array.from({length:4},(_,i)=>!!members.find(m=>m.slot===i)?.online)};
 }

@@ -33,6 +33,7 @@ type Request struct {
 	Command    game.Command `json:"command"`
 	Appearance Appearance   `json:"appearance"`
 	LogEnabled bool         `json:"logEnabled"`
+	Message    string       `json:"message,omitempty"`
 }
 
 func (a *App) RPC(r Request) (any, error) {
@@ -73,6 +74,9 @@ func (a *App) RPC(r Request) (any, error) {
 		return nil, a.AssignBot(r.Seat, r.ModelID)
 	case "room-service":
 		return nil, a.SetRoomService(r.URL)
+	case "client-error":
+		a.LogClientError(r.Message)
+		return nil, nil
 	case "voice-send":
 		return nil, a.SendVoice(r.Voice)
 	case "voice-poll":

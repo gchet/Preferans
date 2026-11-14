@@ -51,7 +51,7 @@ jobs:
           mkdir -p config/local dist
           printf '{}' > config/local/build.json
           npm ci
-          npm run build
+          PREFERANS_VERSION="${TAG#v}" npm run build
         working-directory: web
       - name: Build Preferans.exe
         env:
@@ -104,7 +104,7 @@ jobs:
           mkdir -p config/local
           printf '{}' > config/local/build.json
           npm ci
-          npm run build
+          PREFERANS_VERSION="${TAG#v}" npm run build
         working-directory: web
       # Ключ подписи APK. Без постоянного ключа каждый запуск подпишет APK новым случайным debug-ключом,
       # и установленное приложение не обновится «поверх». Положите base64 вашего ~/.android/debug.keystore

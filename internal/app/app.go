@@ -82,6 +82,8 @@ type App struct {
 	logPath           string
 	logOverride       bool
 	defaultLogPath    string
+	lastClientError   string
+	lastClientErrorAt time.Time
 	logCounted        *os.File
 	logBytes          int64
 	node              *p2p.Node
