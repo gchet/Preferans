@@ -10,6 +10,7 @@ interface Window {
     saveFullLogToDownloads?(): void;
     getVersionCode(): number;
     setLanguage?(language: string): void;
+    setKeepAlive?(on: boolean): void;
     getVersionName(): string;
     installUpdate(url: string, sha256: string): void;
   };

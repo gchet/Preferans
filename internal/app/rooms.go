@@ -531,14 +531,42 @@ var connectionSilenceTimeout = time.Duration(config.Interface.ConnectionSilenceT
 // Signaling HTTP can wait for several seconds during a network outage.
 // Keep the game channel watchdog independent of those requests.
 func (a *App) heartbeatLoop() {
-	tick := time.NewTicker(time.Duration(config.Interface.HeartbeatIntervalMs) * time.Millisecond)
+	interval := time.Duration(config.Interface.HeartbeatIntervalMs) * time.Millisecond
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
+	last := time.Now().Round(0)
 	for {
 		select {
 		case <-a.closed:
 			return
 		case <-tick.C:
+			// Round(0) убирает монотонные часы: на Android они стоят, пока устройство спит, а настенные — идут.
+			now := time.Now().Round(0)
+			gap := now.Sub(last)
+			last = now
+			if gap > stallThreshold(interval) {
+				a.noteStall(gap)
+			}
 			a.heartbeat()
+		}
+	}
+}
+
+// stallThreshold — на сколько тик проверки может опоздать, прежде чем считать, что приложение было приостановлено
+// (блокировка экрана, экономия батареи, зависание Wi-Fi): обычное опоздание — доли секунды.
+func stallThreshold(interval time.Duration) time.Duration { return 2*interval + time.Second }
+
+// noteStall записывает паузу в журнал и прощает связям молчание за её время: пока приложение стояло, чужие сообщения
+// лежали в сокете необработанными, и тайм-аут «нет ответа канала» сработал бы у всех участников сразу, хотя они на связи.
+// Если партнёр на самом деле пропал, тайм-аут отсчитается заново от конца паузы.
+func (a *App) noteStall(gap time.Duration) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.logLocked("%s", locales.Format("go.internal.app.stall", gap.Seconds()))
+	now := time.Now()
+	for _, l := range a.peers {
+		if l.Auth && !l.LastSeen.IsZero() {
+			l.LastSeen = now
 		}
 	}
 }

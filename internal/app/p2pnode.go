@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ func (a *App) p2pNode() (*p2p.Node, error) {
 			a.nodeErr = err
 			return
 		}
-		n, err := p2p.NewNode(p2p.Config{KeyFile: filepath.Join(a.config.Dir, "p2p-identity"), Logf: a.p2pLog})
+		n, err := p2p.NewNode(p2p.Config{KeyFile: filepath.Join(a.config.Dir, "p2p-identity"), Logf: a.p2pLog, Mobile: runtime.GOOS == "android" || runtime.GOOS == "ios"})
 		if err != nil {
 			a.nodeErr = err
 			return

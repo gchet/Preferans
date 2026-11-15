@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"preferans/config"
@@ -101,11 +102,16 @@ type App struct {
 	p2pLogs           chan string
 	lobbyHost         string // peer ID сервиса, за которым следуем (пусто — собственный сервис)
 	lobbySince        int64  // только для тестов: подмена времени установки
+	lobbyMobile       bool   // только для тестов: объявляться как мобильное устройство
 	lobbyAnnounced   time.Time // когда последний раз опубликовано объявление (только горутина лобби)
 	logOnceAt         map[string]time.Time // не чаще раза в период для сообщений с одним ключом (a.mu)
 	lobbySavedTry    time.Time // последняя попытка связаться с запомненным ведущим (только горутина лобби)
 	lobbyKick        chan struct{} // внеочередной опрос лобби (после возврата сети)
 	lobbyNote        string    // последнее записанное в журнал состояние лобби (чтобы не повторять)
+	lobbyAddrs       string    // адреса relay из последнего объявления: при их смене объявляемся сразу (только горутина лобби)
+	lobbyRetry       int       // сколько опросов подряд лобби повторяется вне расписания (только горутина лобби)
+	lobbyFails       map[string]int // подряд неудачных обменов каталогами с кандидатом в ведущие (только горутина лобби)
+	lobbySyncing     atomic.Bool    // идёт фоновый обмен каталогами с остальными кандидатами
 	appearance        Appearance
 	closed            chan struct{}
 	once              sync.Once

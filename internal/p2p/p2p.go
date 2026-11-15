@@ -47,6 +47,8 @@ type Config struct {
 	KeyFile string
 	// Logf получает диагностические сообщения сети (пробитие NAT, закрытие соединений). Не должен блокироваться.
 	Logf func(string)
+	// Mobile — узел на телефоне или планшете (объявляется в лобби: настольный ведущий приоритетнее).
+	Mobile bool
 }
 
 // Node — долгоживущий узел приложения.
@@ -432,6 +434,7 @@ func (n *Node) Dial(ctx context.Context, inv Invite) (*Conn, error) {
 			release()
 		}
 	}()
+	n.preferLAN(ctx, id, direct)
 	if len(direct) > 0 && !n.hasDirect(id) {
 		dctx, cancel := context.WithTimeout(ctx, directDialTimeout)
 		t0 := time.Now()

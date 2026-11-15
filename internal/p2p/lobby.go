@@ -25,6 +25,9 @@ type Announcement struct {
 	Addrs []string `json:"a"`
 	Since int64    `json:"s"` // когда установлено приложение (чем раньше, тем выше приоритет)
 	At    int64    `json:"t"` // когда опубликовано
+	// Mobile — телефон или планшет. Такое устройство засыпает при блокировке экрана и уходит из сети вместе с сервисом
+	// комнат, поэтому настольный компьютер всегда приоритетнее, как бы давно ни был установлен телефон.
+	Mobile bool `json:"m,omitempty"`
 }
 
 // Since возвращает время первой установки узла (время создания файла ключа), unix-секунды.
@@ -59,9 +62,19 @@ func (n *Node) Announce(ctx context.Context, since int64) error {
 	if len(addrs) == 0 {
 		return fmt.Errorf("нет адресов relay для объявления")
 	}
-	b, _ := json.Marshal(Announcement{V: 1, ID: n.h.ID().String(), Addrs: addrs, Since: since, At: time.Now().Unix()})
+	b, _ := json.Marshal(Announcement{V: 1, ID: n.h.ID().String(), Addrs: addrs, Since: since, At: time.Now().Unix(), Mobile: n.cfg.Mobile})
 	return ntfyPost(ctx, LobbyTopic, b)
 }
+
+// AnnounceAddrs — адреса, которые Announce опубликовал бы сейчас (пусто, пока relay не зарезервирован).
+// По их изменению приложение объявляется сразу, не дожидаясь периода лобби.
+func (n *Node) AnnounceAddrs() []string { return n.relayAddrs() }
+
+// IsMobile сообщает, что узел работает на телефоне или планшете.
+func (n *Node) IsMobile() bool { return n.cfg.Mobile }
+
+// SetMobile переопределяет признак мобильного устройства (для тестов; вызывать до первого объявления).
+func (n *Node) SetMobile(v bool) { n.cfg.Mobile = v }
 
 // Invite превращает объявление в приглашение для запросов к сервису.
 func (a Announcement) Invite() Invite { return Invite{ID: a.ID, Addrs: a.Addrs} }
@@ -119,11 +132,32 @@ func validAnnouncement(a Announcement) bool {
 // TestLoopbackEnabled — режим без публичной сети (тесты и PREFERANS_P2P_LOOPBACK=1).
 func TestLoopbackEnabled() bool { return TestLoopback || loopbackEnv() }
 
-// ChooseHost выбирает ведущего лобби среди живых объявлений: побеждает самая старая установка
-// (при равенстве — меньший peer ID). Объявления старше maxAge считаются устаревшими.
+// hostBefore — порядок приоритета ведущих: сначала настольные устройства, затем самая старая установка,
+// при равенстве — меньший peer ID.
+func hostBefore(a, b Announcement) bool {
+	if a.Mobile != b.Mobile {
+		return !a.Mobile
+	}
+	if a.Since != b.Since {
+		return a.Since < b.Since
+	}
+	return a.ID < b.ID
+}
+
+// ChooseHost выбирает ведущего лобби среди живых объявлений (см. hostBefore).
+// Объявления старше maxAge считаются устаревшими.
 func ChooseHost(anns []Announcement, now time.Time, maxAge time.Duration) (Announcement, bool) {
-	var best Announcement
-	found := false
+	ranked := RankHosts(anns, now, maxAge)
+	if len(ranked) == 0 {
+		return Announcement{}, false
+	}
+	return ranked[0], true
+}
+
+// RankHosts возвращает живые объявления по убыванию приоритета ведущего. Если лучший ведущий недоступен
+// этому устройству, приложение берёт следующего.
+func RankHosts(anns []Announcement, now time.Time, maxAge time.Duration) []Announcement {
+	var out []Announcement
 	for _, a := range anns {
 		// At хранится с точностью до секунды (усечена вниз), поэтому возраст завышен меньше чем на секунду: вычитаем её,
 		// иначе при коротком maxAge (в тестах) свежее объявление считалось бы устаревшим.
@@ -131,9 +165,8 @@ func ChooseHost(anns []Announcement, now time.Time, maxAge time.Duration) (Annou
 		if age > maxAge || age < -5*time.Minute {
 			continue
 		}
-		if !found || a.Since < best.Since || (a.Since == best.Since && a.ID < best.ID) {
-			best, found = a, true
-		}
+		out = append(out, a)
 	}
-	return best, found
+	sort.SliceStable(out, func(i, j int) bool { return hostBefore(out[i], out[j]) })
+	return out
 }

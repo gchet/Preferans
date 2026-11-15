@@ -101,3 +101,31 @@ func TestSamePublicFilterDropsOwnPublicIP(t *testing.T) {
 		t.Fatal("без своих публичных адресов ничего не убираем")
 	}
 }
+func TestIsHairpin(t *testing.T) {
+	ours := map[string]bool{"93.184.216.34": true}
+	mk := func(s string) ma.Multiaddr {
+		m, err := ma.NewMultiaddr(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	if !isHairpin(mk("/ip4/93.184.216.34/udp/57752/quic-v1"), ours) {
+		t.Fatal("публичный адрес с нашим IP — это hairpin")
+	}
+	if isHairpin(mk("/ip4/192.168.0.112/udp/53710/quic-v1"), ours) {
+		t.Fatal("адрес локальной сети — не hairpin")
+	}
+	if isHairpin(mk("/ip4/8.8.4.4/udp/1/quic-v1"), ours) {
+		t.Fatal("чужой публичный адрес — не hairpin")
+	}
+	if isHairpin(mk("/ip4/93.184.216.34/udp/1/quic-v1/p2p/12D3KooWNjbgbYcJ7dM18dAuhf5LNyp9EMLe46Y1PjL4AjDM3PKj/p2p-circuit"), ours) {
+		t.Fatal("relay — не hairpin")
+	}
+	if isHairpin(nil, ours) {
+		t.Fatal("пустой адрес — не hairpin")
+	}
+	if got := privateAddrs([]string{"/ip4/192.168.0.112/udp/1/quic-v1", "/ip4/93.184.216.34/udp/1/quic-v1", "/ip4/127.0.0.1/udp/1/quic-v1"}); len(got) != 1 || got[0] != "/ip4/192.168.0.112/udp/1/quic-v1" {
+		t.Fatalf("privateAddrs: %v", got)
+	}
+}

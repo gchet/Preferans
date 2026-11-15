@@ -208,3 +208,92 @@ func (n *Node) tryRoutedLAN(id peer.ID, lan []string) {
 	}
 	n.logf("партнёр %s за тем же роутером, но его локальные адреса недоступны (%v); следующая попытка не раньше чем через %s", short(id), err, lanDelay(n.lan.failsOf(id)))
 }
+
+// Заход через публичный адрес роутера (hairpin). Если у двух устройств за одним роутером уже есть прямое соединение,
+// установленное через их общий публичный IP (после пробития NAT в лобби), Dial считал его достаточным и не пробовал
+// локальную сеть. Но такой путь зависит от поддержки hairpin-NAT в роутере и менее устойчив, чем соединение внутри сети.
+
+// isHairpin: адрес собеседника — публичный и с тем же IP, что у нас (то есть соединение идёт «наружу и обратно»).
+func isHairpin(remote ma.Multiaddr, ours map[string]bool) bool {
+	if remote == nil || strings.Contains(remote.String(), "/p2p-circuit") || !manet.IsPublicAddr(remote) {
+		return false
+	}
+	return ours[ipOf(remote)]
+}
+
+// directConns возвращает нелимитированные (не relay) соединения с партнёром.
+func (n *Node) directConns(id peer.ID) []network.Conn {
+	var out []network.Conn
+	for _, c := range n.h.Network().ConnsToPeer(id) {
+		if !c.Stat().Limited {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// hairpinOnly: все прямые соединения с партнёром идут через публичный адрес роутера (и они есть).
+func (n *Node) hairpinOnly(id peer.ID) []network.Conn {
+	conns := n.directConns(id)
+	if len(conns) == 0 {
+		return nil
+	}
+	ours := n.publicIPs()
+	for _, c := range conns {
+		if !isHairpin(c.RemoteMultiaddr(), ours) {
+			return nil
+		}
+	}
+	return conns
+}
+
+// privateAddrs оставляет адреса из частных сетей (локальная сеть партнёра).
+func privateAddrs(addrs []string) []string {
+	var out []string
+	for _, s := range addrs {
+		if m, err := ma.NewMultiaddr(s); err == nil && manet.IsPrivateAddr(m) && !manet.IsIPLoopback(m) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// preferLAN заменяет соединение через публичный адрес роутера соединением по локальной сети, если оно возможно.
+// При неудаче прежнее соединение восстанавливается. Повторы ограничены паузой lanDelay (как в tryRoutedLAN).
+func (n *Node) preferLAN(ctx context.Context, id peer.ID, direct []string) {
+	if n.cfg.LoopbackOnly {
+		return
+	}
+	lan := privateAddrs(direct)
+	if len(lan) == 0 {
+		return
+	}
+	conns := n.hairpinOnly(id)
+	if len(conns) == 0 || !n.lan.allow(id, time.Now()) {
+		return
+	}
+	var back []string
+	for _, c := range conns {
+		back = append(back, c.RemoteMultiaddr().String())
+	}
+	n.logf("соединение с %s идёт через публичный адрес общего роутера; пробуем локальную сеть", short(id))
+	for _, c := range conns {
+		_ = c.Close()
+	}
+	n.clearBackoff(id)
+	dctx, cancel := context.WithTimeout(ctx, directDialTimeout)
+	t0 := time.Now()
+	err := n.connectAddrs(network.WithForceDirectDial(dctx, "preferans-lan"), id, lan, false)
+	cancel()
+	ok := err == nil && len(n.directConns(id)) > 0
+	n.lan.done(id, ok, time.Now())
+	if ok {
+		n.logf("прямое подключение к %s по локальной сети установлено за %s", short(id), time.Since(t0).Round(time.Millisecond))
+		return
+	}
+	n.logf("локальная сеть партнёра %s недоступна (%v); возвращаем соединение через публичный адрес роутера", short(id), err)
+	n.clearBackoff(id)
+	rctx, cancel := context.WithTimeout(ctx, directDialTimeout)
+	defer cancel()
+	_ = n.connectAddrs(network.WithForceDirectDial(rctx, "preferans-hairpin"), id, back, false)
+}

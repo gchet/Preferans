@@ -119,6 +119,10 @@ class MainActivity : Activity() {
                 @JavascriptInterface fun saveFullLogToDownloads() {
                     runOnUiThread { exportLogToDownloads() }
                 }
+                // Пока игрок за столом, служба переднего плана не даёт ОС усыпить связь (блокировка экрана, сворачивание).
+                @JavascriptInterface fun setKeepAlive(on: Boolean) {
+                    runOnUiThread { if (on) startKeepAlive() else stopKeepAlive() }
+                }
                 @JavascriptInterface fun getVersionCode(): Int = BuildConfig.VERSION_CODE
                 @JavascriptInterface fun getVersionName(): String = BuildConfig.VERSION_NAME
                 // Обновление с GitHub: адрес и SHA-256 приходят из приложения (оно читает их из выпуска на GitHub).
@@ -180,6 +184,35 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             setContentView(TextView(this).apply { text = text("android.start.failed", e.message); setPadding(24, 48, 24, 24) })
         }
+    }
+    private fun startKeepAlive() {
+        if (exiting) return
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !getSharedPreferences("interface", MODE_PRIVATE).getBoolean("notificationsAsked", false)) {
+            // Без разрешения служба работает, но её уведомления не видно: спрашиваем один раз.
+            getSharedPreferences("interface", MODE_PRIVATE).edit().putBoolean("notificationsAsked", true).apply()
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 12)
+        }
+        try {
+            startForegroundService(Intent(this, KeepAliveService::class.java)
+                .putExtra("channel", text("android.keepalive.channel"))
+                .putExtra("title", text("android.keepalive.title"))
+                .putExtra("text", text("android.keepalive.text")))
+        } catch (_: Exception) {}
+        askIgnoreBatteryOptimizations()
+    }
+    private fun stopKeepAlive() {
+        try { stopService(Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
+    }
+    // Доза и экономия батареи отключают сеть у свёрнутого приложения. Просим исключение один раз за установку.
+    private fun askIgnoreBatteryOptimizations() {
+        val prefs = getSharedPreferences("interface", MODE_PRIVATE)
+        val power = getSystemService(POWER_SERVICE) as android.os.PowerManager
+        if (power.isIgnoringBatteryOptimizations(packageName) || prefs.getBoolean("batteryAsked", false)) return
+        prefs.edit().putBoolean("batteryAsked", true).apply()
+        try {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        } catch (_: Exception) {}
     }
     private fun toast(message: String) = runOnUiThread {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
@@ -304,6 +337,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onDestroy() {
+        if (isFinishing) stopKeepAlive()
         networkCallback?.let { try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(it) } catch (_: Exception) {} }
         try { unregisterReceiver(screenOffReceiver) } catch (_: IllegalArgumentException) { }
         microphoneRequest?.deny()

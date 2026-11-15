@@ -37,6 +37,9 @@ func (a *App) lobbyLoop() {
 	if since == 0 {
 		since = node.Since()
 	}
+	if a.lobbyMobile {
+		node.SetMobile(true)
+	}
 	delay := 8 * time.Second
 	if lobbyPeriod < delay {
 		delay = lobbyPeriod
@@ -58,6 +61,11 @@ func (a *App) lobbyLoop() {
 		delay = lobbyPeriod
 		if ticks < 12 {
 			delay = fast
+		}
+		// После обрыва связи (сеть вернулась, но relay ещё не зарезервирован или ведущий не отвечает) не ждём целый период:
+		// повторяем опрос каждые 10 секунд, но не дольше двух минут подряд.
+		if a.lobbyRetry > 0 && a.lobbyRetry <= 12 {
+			delay = min(delay, fast)
 		}
 	}
 }
@@ -103,37 +111,92 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 		}
 		return // иначе остаёмся на прежнем сервисе
 	}
-	winner, ok := p2p.ChooseHost(cands, time.Now(), 3*lobbyPeriod)
-	if !ok {
-		winner = self
+	self.Mobile = node.IsMobile()
+	cands[0] = self
+	// Кандидаты по приоритету: сначала настольные устройства, затем самая старая установка. Если лучший ведущий
+	// недоступен именно этому устройству, берём следующего: иначе устройство осталось бы с мёртвым сервисом комнат
+	// (так, в партии 14.11 телефон-ведущий уснул, а игроки разошлись по разным сервисам).
+	ranked := p2p.RankHosts(cands, time.Now(), 3*lobbyPeriod)
+	if len(ranked) == 0 {
+		ranked = []p2p.Announcement{self}
 	}
-	if winner.ID == self.ID {
-		a.lobbyLog(fmt.Sprintf("лобби: ведущий комнат — это устройство (живых кандидатов: %d)", len(cands)))
-		// Прежний ведущий мог создавать комнаты без нас: перед объявлением вливаем их каталог в свой.
-		for _, an := range anns {
-			if an.ID != self.ID && time.Now().Unix()-an.At < int64((3*lobbyPeriod)/time.Second)+1 {
-				a.syncRooms(ctx, node, an.Invite())
+	for _, winner := range ranked {
+		if winner.ID == self.ID {
+			a.lobbyLog(fmt.Sprintf("лобби: ведущий комнат — это устройство (живых кандидатов: %d)", len(cands)))
+			// Прежний ведущий мог создавать комнаты без нас: перед объявлением вливаем их каталог в свой.
+			for _, an := range anns {
+				if an.ID != self.ID && time.Now().Unix()-an.At < int64((3*lobbyPeriod)/time.Second)+1 {
+					a.syncRooms(ctx, node, an.Invite())
+				}
 			}
+			a.applyLobbyService("", "")
+			a.lobbyAnnounce(ctx, node, since)
+			a.syncOthers(node, ranked, self.ID)
+			return
 		}
-		a.applyLobbyService("", "")
-		a.lobbyAnnounce(ctx, node, since)
+		a.lobbyLog(fmt.Sprintf("лобби: ведущий комнат — %s (живых кандидатов: %d)", shortID(winner.ID), len(cands)))
+		synced := a.syncRooms(ctx, node, winner.Invite())
+		if !synced {
+			fails := a.lobbyFail(winner.ID)
+			a.mu.Lock()
+			current := a.lobbyHost == winner.ID
+			inRoom := a.rooms.config.Current != "" && a.rooms.config.Current != localRoomID
+			a.mu.Unlock()
+			// Нынешнего ведущего не бросаем из-за одного сбоя, а новый кандидат, до которого не дотянуться, не получает сервис вовсе.
+			if current && fails < lobbyFailLimit || inRoom && !current && fails < lobbyFailLimit {
+				a.lobbyRetry++
+				return
+			}
+			a.lobbyLog(fmt.Sprintf("лобби: ведущий %s недоступен этому устройству (неудач подряд: %d), берём следующего по приоритету", shortID(winner.ID), fails))
+			continue
+		}
+		a.lobbyOK(winner.ID)
+		a.saveHost(winner)
+		if code, err := p2p.Encode(p2p.Code{Kind: p2p.KindService, Invite: winner.Invite()}); err == nil {
+			a.applyLobbyService(code, winner.ID)
+		}
+		a.syncOthers(node, ranked, winner.ID)
 		return
 	}
-	a.lobbyLog(fmt.Sprintf("лобби: ведущий комнат — %s (живых кандидатов: %d)", shortID(winner.ID), len(cands)))
-	synced := a.syncRooms(ctx, node, winner.Invite())
-	a.mu.Lock()
-	inRoom := a.rooms.config.Current != "" && a.rooms.config.Current != localRoomID
-	a.mu.Unlock()
-	if inRoom && !synced {
-		return // без обмена каталогами переход оборвал бы комнату: повторим через период
+}
+
+// lobbyFailLimit — сколько опросов подряд ведущий может не отвечать, прежде чем нынешнего ведущего заменит следующий кандидат.
+const lobbyFailLimit = 2
+
+func (a *App) lobbyFail(id string) int {
+	if a.lobbyFails == nil {
+		a.lobbyFails = map[string]int{}
 	}
-	if synced {
-		a.saveHost(winner)
+	a.lobbyFails[id]++
+	return a.lobbyFails[id]
+}
+
+func (a *App) lobbyOK(id string) {
+	delete(a.lobbyFails, id)
+	a.lobbyRetry = 0
+}
+
+// syncOthers вливает каталог комнат остальных живых кандидатов (не только выбранного ведущего): тогда комната, созданная
+// на любом сервисе, попадает во все каталоги, и игроки находят её, даже если на время оказались на разных сервисах.
+// Выполняется в фоне и не чаще одного обмена за раз: недоступный кандидат не задерживает опрос лобби.
+func (a *App) syncOthers(node *p2p.Node, ranked []p2p.Announcement, skip string) {
+	var targets []p2p.Announcement
+	for _, an := range ranked {
+		if an.ID != node.ID() && an.ID != skip && len(targets) < 2 {
+			targets = append(targets, an)
+		}
 	}
-	code, err := p2p.Encode(p2p.Code{Kind: p2p.KindService, Invite: winner.Invite()})
-	if err == nil {
-		a.applyLobbyService(code, winner.ID)
+	if len(targets) == 0 || !a.lobbySyncing.CompareAndSwap(false, true) {
+		return
 	}
+	go func() {
+		defer a.lobbySyncing.Store(false)
+		for _, an := range targets {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			a.syncRooms(ctx, node, an.Invite())
+			cancel()
+		}
+	}()
 }
 
 // lobbyLog пишет в журнал состояние лобби только при его изменении.
@@ -149,13 +212,19 @@ func (a *App) lobbyLog(note string) {
 
 // lobbyAnnounce публикует объявление не чаще периода лобби. Пока у узла нет адресов relay, повторяет на следующем опросе.
 func (a *App) lobbyAnnounce(ctx context.Context, node *p2p.Node, since int64) {
-	if time.Since(a.lobbyAnnounced) < lobbyPeriod-time.Second {
+	addrs := strings.Join(node.AnnounceAddrs(), ",")
+	// Адреса relay сменились (после потери сети резервирование новое): ведущий объявляется сразу, иначе остальные
+	// ещё целый период ищут его по устаревшим адресам.
+	if addrs == a.lobbyAddrs && time.Since(a.lobbyAnnounced) < lobbyPeriod-time.Second {
 		return
 	}
 	if err := node.Announce(ctx, since); err != nil {
 		a.lobbyLog(fmt.Sprintf("лобби: объявление не отправлено: %v", err))
+		a.lobbyRetry++ // повторяем опрос вне расписания, пока не появятся адреса relay
 		return
 	}
+	a.lobbyAddrs = addrs
+	a.lobbyRetry = 0
 	first := a.lobbyAnnounced.IsZero()
 	a.lobbyAnnounced = time.Now()
 	if first {

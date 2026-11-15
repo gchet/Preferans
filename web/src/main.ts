@@ -1132,6 +1132,13 @@ function reportClientError(e: unknown) {
 }
 window.addEventListener("error", ev => reportClientError(ev.error ?? ev.message));
 window.addEventListener("unhandledrejection", ev => reportClientError(ev.reason));
+let keepAlive = false;
+// Android: пока игрок за столом, связь поддерживает служба переднего плана (иначе при блокировке экрана ОС усыпляет сеть).
+function setKeepAlive(on: boolean) {
+  if (on === keepAlive) return;
+  keepAlive = on;
+  window.PreferansAndroid?.setKeepAlive?.(on);
+}
 let refreshing = false;
 async function refresh() {
   if (refreshing) return;
@@ -1141,6 +1148,7 @@ async function refresh() {
 async function refreshState() {
   const s = await rpc<Status>("status");
   window.PreferansAndroid?.setLanguage?.(language);
+  setKeepAlive(!!s.view && s.view.stage !== 'finished');
   if (s.view) await prepareCards(s.appearance);
   else void prepareCards(s.appearance);
   // Keep the actual button under the finger until the native click is dispatched.

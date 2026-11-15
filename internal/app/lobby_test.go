@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -208,4 +209,78 @@ func TestLobbyFindsRememberedHostWhenNtfyIsDown(t *testing.T) {
 	}()
 	b2.EnableLobby()
 	eventually(t, func() bool { bu, bh := lobbyState(b2); return bu != "" && bh != "" })
+}
+// Настольное устройство становится ведущим, даже если телефон установлен раньше: телефон засыпает вместе с сервисом.
+func TestLobbyPrefersDesktopOverOlderMobile(t *testing.T) {
+	ts := ntfyLobbyStub()
+	defer ts.Close()
+	oldURL, oldPeriod := p2p.NtfyURL, lobbyPeriod
+	p2p.NtfyURL, lobbyPeriod = ts.URL, 250*time.Millisecond
+	defer func() { p2p.NtfyURL, lobbyPeriod = oldURL, oldPeriod }()
+
+	phone, pc := New(t.TempDir()), New(t.TempDir())
+	defer phone.Close()
+	defer pc.Close()
+	phone.lobbySince, pc.lobbySince = 100, 200
+	phone.lobbyMobile = true
+	phone.EnableLobby()
+	pc.EnableLobby()
+	eventually(t, func() bool {
+		pu, ph := lobbyState(pc)
+		fu, fh := lobbyState(phone)
+		return pu == "" && ph == "" && fu != "" && fh != ""
+	})
+}
+
+// Лучший по приоритету кандидат недоступен этому устройству: оно не остаётся без сервиса, а берёт следующего (здесь — себя).
+func TestLobbySkipsUnreachableHost(t *testing.T) {
+	ts := ntfyLobbyStub()
+	defer ts.Close()
+	oldURL, oldPeriod := p2p.NtfyURL, lobbyPeriod
+	p2p.NtfyURL, lobbyPeriod = ts.URL, 250*time.Millisecond
+	defer func() { p2p.NtfyURL, lobbyPeriod = oldURL, oldPeriod }()
+
+	// «Мёртвый» ведущий: живой узел, который не обслуживает запросы комнат
+	dead, err := p2p.NewNode(p2p.Config{LoopbackOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dead.Close()
+	first, cancel0 := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := dead.Announce(first, 50); err != nil {
+		t.Fatal(err)
+	}
+	cancel0()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = dead.Announce(ctx, 50)
+			cancel()
+			select {
+			case <-stop:
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}()
+	a := New(t.TempDir())
+	defer a.Close()
+	a.lobbySince = 200
+	a.EnableLobby()
+	eventually(t, func() bool {
+		u, h := lobbyState(a)
+		return u == "" && h == ""
+	})
+	eventually(t, func() bool { // записи сети попадают в журнал с небольшой задержкой
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		for _, line := range a.logs {
+			if strings.Contains(line, "недоступен этому устройству") {
+				return true
+			}
+		}
+		return false
+	})
 }

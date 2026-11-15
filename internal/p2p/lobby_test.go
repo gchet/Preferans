@@ -97,3 +97,35 @@ func TestLobbyRejectsDirectAddressesOutsideTests(t *testing.T) {
 		t.Fatal("прямой адрес с публичным IP принят в лобби")
 	}
 }
+// Настольное устройство приоритетнее телефона, даже если телефон установлен раньше: телефон засыпает вместе с сервисом.
+func TestChooseHostPrefersDesktopOverOlderMobile(t *testing.T) {
+	now := time.Now()
+	fresh := now.Unix()
+	phone := Announcement{V: 1, ID: "phone", Since: 10, At: fresh, Mobile: true}
+	pc := Announcement{V: 1, ID: "pc", Since: 500, At: fresh}
+	got, ok := ChooseHost([]Announcement{phone, pc}, now, 3*time.Minute)
+	if !ok || got.ID != "pc" {
+		t.Fatalf("победитель %+v", got)
+	}
+	oldPhone := Announcement{V: 1, ID: "phone2", Since: 5, At: fresh, Mobile: true}
+	ranked := RankHosts([]Announcement{phone, oldPhone, pc}, now, 3*time.Minute)
+	if len(ranked) != 3 || ranked[0].ID != "pc" || ranked[1].ID != "phone2" || ranked[2].ID != "phone" {
+		t.Fatalf("порядок %+v", ranked)
+	}
+	// без настольных устройств по-прежнему побеждает самая старая установка
+	if got, _ = ChooseHost([]Announcement{phone, oldPhone}, now, 3*time.Minute); got.ID != "phone2" {
+		t.Fatalf("победитель среди телефонов %+v", got)
+	}
+}
+
+// Объявление настольного устройства не меняется по сравнению с прежними версиями: поле m не пишется.
+func TestAnnouncementMobileFieldIsOptional(t *testing.T) {
+	b, _ := json.Marshal(Announcement{V: 1, ID: "x", Since: 1, At: 1})
+	if strings.Contains(string(b), `"m"`) {
+		t.Fatalf("настольное объявление содержит поле m: %s", b)
+	}
+	b, _ = json.Marshal(Announcement{V: 1, ID: "x", Since: 1, At: 1, Mobile: true})
+	if !strings.Contains(string(b), `"m":true`) {
+		t.Fatalf("мобильное объявление без поля m: %s", b)
+	}
+}

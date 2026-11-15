@@ -214,7 +214,7 @@ pwsh ./scripts/Publish-Release.ps1 -Repository <владелец>/<приват�
 
 После публикации (не для черновика) скрипт сам скачивает выпущенные
 `Preferans.exe`, `Preferans.apk` и `version.json` в `dist` через
-`scripts/Download-Release.ps1`: файлы сверяются с `SHA256SUMS.txt`, `versionName`
+`scripts/Download-Release.ps1` (вместе с `SHA256SUMS.txt`, лицензиями и уведомлениями, если они есть в Release): файлы сверяются с `SHA256SUMS.txt`, `versionName`
 сверяется с тегом, а `dist/Preferans.build.json` обновляется. Так `dist` совпадает с
 тем, что реально выпущено. Отключить скачивание можно ключом `-NoDownload`; если оно
 не удалось, Release всё равно опубликован, и скачать его можно отдельно.

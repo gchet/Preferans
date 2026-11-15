@@ -37,6 +37,8 @@ $release = (Invoke-Gh @('release', 'view', $Tag, '--repo', $Repository, '--json'
 if ($release.isDraft -and !$AllowDraft) { throw "Release $Tag ещё черновик. Опубликуйте его или добавьте -AllowDraft." }
 $binaries = @('Preferans.exe', 'Preferans.apk', 'version.json')
 $names = @($release.assets | ForEach-Object { $_.name })
+# Остальные файлы выпуска обновляются в dist, если они есть: иначе рядом остались бы суммы и лицензии прежней версии.
+$extras = @('SHA256SUMS.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'third-party-licenses.zip') | Where-Object { $names -contains $_ }
 foreach ($name in $binaries + 'SHA256SUMS.txt') {
     if ($names -notcontains $name) { throw "В Release $Tag нет файла $name." }
 }
@@ -46,7 +48,7 @@ if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -For
 $null = New-Item -ItemType Directory -Force -Path $work
 try {
     $downloadArgs = @('release', 'download', $Tag, '--repo', $Repository, '--dir', $work, '--clobber')
-    foreach ($name in $binaries + 'SHA256SUMS.txt') { $downloadArgs += @('--pattern', $name) }
+    foreach ($name in $binaries + $extras) { $downloadArgs += @('--pattern', $name) }
     $null = Invoke-Gh $downloadArgs
 
     $expected = @{}
@@ -61,12 +63,16 @@ try {
         if (!$expected.ContainsKey($name)) { throw "Для $name нет суммы в SHA256SUMS.txt." }
         if ($hashes[$name] -ne $expected[$name]) { throw "Контрольная сумма $name не совпадает с SHA256SUMS.txt." }
     }
+    foreach ($name in $extras) {
+        if ($name -eq 'SHA256SUMS.txt' -or !$expected.ContainsKey($name)) { continue }
+        if ((Get-FileHash -LiteralPath (Join-Path $work $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected[$name]) { throw "Контрольная сумма $name не совпадает с SHA256SUMS.txt." }
+    }
     $manifest = Get-Content -LiteralPath (Join-Path $work 'version.json') -Raw -Encoding utf8 | ConvertFrom-Json
     if ($manifest.versionName -ne $Tag.Substring(1)) { throw "versionName ($($manifest.versionName)) не соответствует тегу $Tag." }
     if ($manifest.apk -ne 'Preferans.apk') { throw 'version.json указывает не на Preferans.apk.' }
 
     $null = New-Item -ItemType Directory -Force -Path $Destination
-    foreach ($name in $binaries) {
+    foreach ($name in $binaries + $extras) {
         $target = Join-Path $Destination $name
         try {
             Copy-Item -LiteralPath (Join-Path $work $name) -Destination "$target.new" -Force

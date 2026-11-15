@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"preferans/internal/game"
 	"preferans/internal/rooms"
+	"strings"
 	"testing"
 	"time"
 )
@@ -435,4 +436,37 @@ func TestPublishedTableSurvivesLostHTTPReply(t *testing.T) {
 		t.Fatal("expected simulated HTTP failure")
 	}
 	waitRoom(t, func() bool { s := a.Status(); return s.Current && s.Host && s.View != nil })
+}
+
+// Пауза приложения (блокировка экрана, экономия батареи) не должна рвать связи: за время паузы партнёры молчали
+// только потому, что мы не читали сокет.
+func TestStallForgivesSilence(t *testing.T) {
+	a := New(t.TempDir())
+	defer a.Close()
+	l := &Link{Auth: true, LastSeen: time.Now().Add(-time.Minute)}
+	idle := &Link{Auth: false}
+	a.mu.Lock()
+	a.peers[1], a.peers[2] = l, idle
+	a.mu.Unlock()
+	a.noteStall(30 * time.Second)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if time.Since(l.LastSeen) > 5*time.Second {
+		t.Fatalf("молчание за время паузы не прощено: %v", l.LastSeen)
+	}
+	if !idle.LastSeen.IsZero() {
+		t.Fatal("неподтверждённое соединение не трогаем")
+	}
+	found := false
+	for _, line := range a.logs {
+		if strings.Contains(line, "приостановлено на 30.0 с") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("паузы нет в журнале: %v", a.logs)
+	}
+	if got := stallThreshold(time.Second); got != 3*time.Second {
+		t.Fatalf("порог паузы %v", got)
+	}
 }
