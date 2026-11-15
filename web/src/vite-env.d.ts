@@ -11,8 +11,7 @@ interface Window {
     getVersionCode(): number;
     setLanguage?(language: string): void;
     getVersionName(): string;
-    checkUpdate(url: string, requestId: number): void;
-    installUpdate(url: string): void;
+    installUpdate(url: string, sha256: string): void;
   };
 }
 

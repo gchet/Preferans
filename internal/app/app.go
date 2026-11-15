@@ -15,6 +15,7 @@ import (
 	"preferans/config"
 	"preferans/internal/game"
 	"preferans/internal/p2p"
+	"preferans/internal/selfupdate"
 	"preferans/internal/rooms"
 	"preferans/internal/secrets"
 	"preferans/internal/storage"
@@ -82,6 +83,9 @@ type App struct {
 	logPath           string
 	logOverride       bool
 	defaultLogPath    string
+	updater           *selfupdate.Client
+	update            updateState
+	quit              func()
 	lastClientError   string
 	lastClientErrorAt time.Time
 	logCounted        *os.File
@@ -110,6 +114,7 @@ type Status struct {
 	ConnectionReasons map[int]string `json:"connectionReasons"`
 	AIEnabled         bool           `json:"aiEnabled"`
 	AIReview          *AIReview      `json:"aiReview,omitempty"`
+	Update            *UpdateInfo    `json:"update,omitempty"`
 	LogPath           string         `json:"logPath"`
 	LogSize           int64          `json:"logSize"`
 	LogPathOverride   bool           `json:"logPathOverride"`
@@ -139,7 +144,7 @@ type SaveInfo struct {
 }
 
 func New(dir string) *App {
-	a := &App{store: storage.Store{Dir: filepath.Join(dir, "saves")}, config: storage.Store{Dir: dir}, peers: map[int]*Link{}, closed: make(chan struct{}), lobbyKick: make(chan struct{}, 1)}
+	a := &App{store: storage.Store{Dir: filepath.Join(dir, "saves")}, config: storage.Store{Dir: dir}, peers: map[int]*Link{}, closed: make(chan struct{}), lobbyKick: make(chan struct{}, 1), updater: selfupdate.New()}
 	a.appearance = Appearance{Name: locales.Text("go.internal.app.app.text001"), Deck: "atlas", Size: "normal", LargeIndices: true, Back: "plaid"}
 	var appearance Appearance
 	if a.config.Load("appearance", &appearance) == nil {
@@ -306,6 +311,7 @@ func (a *App) statusLocked() Status {
 	}
 	s := Status{Current: a.saved.Table != "", Connected: append([]bool{}, a.connected...), Paused: a.pausedLocked(), Error: a.lastError, Host: a.saved.State != nil, Links: map[int]string{}}
 	s.AIEnabled = a.aiEnabledLocked()
+	s.Update = a.updateStatusLocked()
 	s.LogPath, s.LogPathOverride = a.logPath, a.logOverride
 	s.LogSize = a.logSizeLocked()
 	s.AIReview = a.aiReviewSnapshotLocked()

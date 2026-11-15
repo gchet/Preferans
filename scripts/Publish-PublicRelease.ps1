@@ -7,6 +7,7 @@ param(
     [string]$NotesFile = '',
     [switch]$Draft,
     [switch]$CheckOnly,
+    [switch]$NoDownload,
     [ValidateSet('On','Off')][string]$AI = 'Off',
     [int]$VersionCode = 0,
     [string]$AndroidSdk = '',

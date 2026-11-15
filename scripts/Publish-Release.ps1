@@ -8,6 +8,7 @@ param(
     [switch]$Draft,
     [switch]$CheckOnly,
     [switch]$SourceRepository,
+    [switch]$NoDownload,
     [ValidateSet('On','Off')][string]$AI = 'Off',
     [ValidateRange(0,2147483647)][int]$VersionCode = 0,
     [string]$AndroidSdk = '',
@@ -144,7 +145,7 @@ try {
 
 - **Preferans.exe** — Windows x64. Требуется Microsoft Edge WebView2 Runtime.
 - **Preferans.apk** — Android 8 и новее, ARM64. Разрешите установку из выбранного браузера или файлового менеджера.
-- **version.json** — манифест для существующего обновления Android по Wi-Fi.
+- **version.json** — служебный файл выпуска: версия и код APK.
 - **SHA256SUMS.txt** — контрольные суммы файлов.
 
 Для доступа примите приглашение владельца и войдите в свой аккаунт GitHub.
@@ -178,6 +179,15 @@ APK подписан текущим debug-ключом разработчика;
         if (!$Draft) { $null = Invoke-Gh @('release','edit',$Tag,'--repo',$Repository,'--draft=false') }
         Write-Host "Готово: https://github.com/$Repository/releases/tag/$Tag"
         if ($Draft) { Write-Host 'Release оставлен черновиком; публикация не выполнена.' }
+        elseif (!$NoDownload) {
+            # Скачиваем опубликованные файлы в dist: проверка загрузки и согласованный локальный dist.
+            try {
+                & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'Download-Release.ps1') -Tag $Tag -Repository $Repository
+                if ($LASTEXITCODE -ne 0) { throw "код $LASTEXITCODE" }
+            } catch {
+                Write-Warning "Release опубликован, но скачать его в dist не удалось ($($_.Exception.Message)). Повторите: pwsh ./scripts/Download-Release.ps1 -Tag $Tag -Repository $Repository"
+            }
+        }
     } catch {
         if ($created) { Write-Warning "Проверьте состояние созданного Release. Файлы для восстановления: $packageDir. Ранее существовавшие версии не изменялись." }
         throw

@@ -34,7 +34,10 @@ type Appearance struct {
 	LogPath        string          `json:"logPath"`
 	UpdateURL      string          `json:"updateURL"`
 	NtfyServers    string          `json:"ntfyServers,omitempty"` // адреса серверов ntfy через «;»; пусто — ntfy.sh
+	AutoUpdate     *bool           `json:"autoUpdate,omitempty"`  // проверять новую версию на GitHub при запуске; пусто — включено
 }
+
+func (p Appearance) autoUpdateOn() bool { return p.AutoUpdate == nil || *p.AutoUpdate }
 
 func (a *App) SetName(name string) error {
 	name = strings.TrimSpace(name)

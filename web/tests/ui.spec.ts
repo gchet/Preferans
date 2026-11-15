@@ -2224,3 +2224,102 @@ test('rooms: management table shows creator and history, actions only on own roo
   await page.locator('dialog button.primary, dialog button:has-text("Удалить")').last().click();
   await expect.poll(()=>deleted).toEqual(['mine']);
 });
+
+const updateInfo = {state: 'available', version: '9.9.9', progress: 0, canInstall: false,
+  apkUrl: 'https://github.com/gchet/Preferans/releases/download/v9.9.9/Preferans.apk', apkSha256: 'a'.repeat(64)};
+async function androidShell(page: Page) {
+  await page.addInitScript(() => {
+    (window as any).installs = [];
+    (window as any).PreferansAndroid = {exitApp() {}, saveLog() {}, getVersionName: () => '2.0.0', getVersionCode: () => 1,
+      installUpdate: (url: string, sha: string) => { (window as any).installs.push([url, sha]); }};
+  });
+}
+
+test('update: startup question, Yes passes the APK address and checksum to the Android installer', async ({page}) => {
+  await androidShell(page);
+  const checks: string[] = [];
+  await page.route('**/api', route => {
+    const req = route.request().postDataJSON();
+    if (req.action === 'update-check') { checks.push(req.version); return route.fulfill({json: {data: updateInfo}}); }
+    return route.fallback();
+  });
+  await page.goto(url);
+  const dialog = page.locator('dialog.app-confirm');
+  await expect(dialog).toContainText('Есть новая версия 9.9.9. Обновить?');
+  await expect(dialog.getByRole('button')).toHaveText(['Нет', 'Да']);
+  await dialog.getByRole('button', {name: 'Да', exact: true}).click();
+  await expect.poll(() => page.evaluate(() => (window as any).installs)).toEqual([[updateInfo.apkUrl, updateInfo.apkSha256]]);
+  await expect(page.locator('#notice')).toContainText('откроется установщик Android');
+  await page.waitForTimeout(1500);
+  await expect(dialog).toHaveCount(0);
+  expect(checks).toEqual(['2.0.0']);
+});
+
+test('update: answering No installs nothing and does not ask again in this session', async ({page}) => {
+  await androidShell(page);
+  let checks = 0;
+  await page.route('**/api', route => {
+    const req = route.request().postDataJSON();
+    if (req.action === 'update-check') { checks++; return route.fulfill({json: {data: updateInfo}}); }
+    return route.fallback();
+  });
+  await page.goto(url);
+  const dialog = page.locator('dialog.app-confirm');
+  await dialog.getByRole('button', {name: 'Нет', exact: true}).click();
+  await expect(dialog).toHaveCount(0);
+  await page.waitForTimeout(2000);
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).installs)).toEqual([]);
+  expect(checks).toBe(1);
+});
+
+test('update: on Windows Yes asks the app to install itself and shows download progress', async ({page}) => {
+  await androidShell(page); // задаёт установленную версию 2.0.0; ветку выбирает canInstall из ответа приложения
+  let installs = 0;
+  await page.route('**/api', async route => {
+    const req = route.request().postDataJSON();
+    if (req.action === 'update-check') return route.fulfill({json: {data: {...updateInfo, canInstall: true}}});
+    if (req.action === 'update-install') { installs++; return route.fulfill({json: {data: null}}); }
+    if (req.action === 'status') {
+      const response = await route.fetch(), body = await response.json();
+      if (installs) body.data.update = {state: 'downloading', version: '9.9.9', progress: 42, canInstall: true};
+      return route.fulfill({response, json: body});
+    }
+    return route.fallback();
+  });
+  await page.goto(url);
+  await page.locator('dialog.app-confirm').getByRole('button', {name: 'Да', exact: true}).click();
+  await expect.poll(() => installs).toBe(1);
+  await expect(page.locator('#notice')).toContainText('Скачивание обновления… 42%');
+  expect(await page.evaluate(() => (window as any).installs)).toEqual([]);
+});
+
+test('update: automatic update setting is on by default, can be switched off and then skips the check', async ({page}) => {
+  await androidShell(page);
+  let saved: any = null, checks = 0;
+  await page.route('**/api', route => {
+    const req = route.request().postDataJSON();
+    if (req.action === 'update-check') { checks++; return route.fulfill({json: {data: null}}); }
+    if (req.action === 'appearance') saved = req.appearance;
+    return route.fallback();
+  });
+  await page.goto(url);
+  await expect.poll(() => checks).toBe(1);
+  await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+  await page.getByRole('tab', {name: 'Подключение', exact: true}).click();
+  const box = page.getByLabel('Автоматическое обновление', {exact: true});
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  await page.locator('#settings-form button.primary').click();
+  await expect.poll(() => saved?.autoUpdate).toBe(false);
+  await page.reload();
+  await page.waitForTimeout(1500);
+  expect(checks).toBe(1);
+  await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+  await page.getByRole('tab', {name: 'Подключение', exact: true}).click();
+  await expect(page.getByLabel('Автоматическое обновление', {exact: true})).not.toBeChecked();
+  // возвращаем настройку: приложение для тестов одно на весь файл
+  await page.getByLabel('Автоматическое обновление', {exact: true}).check();
+  await page.locator('#settings-form button.primary').click();
+  await expect.poll(() => saved?.autoUpdate).toBe(true);
+});

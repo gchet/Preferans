@@ -1,7 +1,7 @@
 import {t} from './i18n';
 
 // Keep confirmations inside the app instead of exposing the WebView origin.
-export function confirmDialog(message: string, acceptLabel: string): Promise<boolean> {
+export function confirmDialog(message: string, acceptLabel: string, cancelLabel = t('web.confirm.cancel'), acceptClass = 'danger'): Promise<boolean> {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
     dialog.className = 'app-confirm';
@@ -17,10 +17,10 @@ export function confirmDialog(message: string, acceptLabel: string): Promise<boo
     actions.className = 'toolbar';
     const cancel = document.createElement('button');
     cancel.type = 'button';
-    cancel.textContent = t('web.confirm.cancel');
+    cancel.textContent = cancelLabel;
     const accept = document.createElement('button');
     accept.type = 'button';
-    accept.className = 'danger';
+    accept.className = acceptClass;
     accept.textContent = acceptLabel;
     cancel.onclick = () => dialog.close('cancel');
     accept.onclick = () => dialog.close('accept');

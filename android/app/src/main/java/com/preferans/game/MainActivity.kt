@@ -121,45 +121,17 @@ class MainActivity : Activity() {
                 }
                 @JavascriptInterface fun getVersionCode(): Int = BuildConfig.VERSION_CODE
                 @JavascriptInterface fun getVersionName(): String = BuildConfig.VERSION_NAME
-                @JavascriptInterface fun checkUpdate(url: String, requestId: Int) {
-                    if (requestId < 1) return
-                    Thread {
-                        var connection: HttpURLConnection? = null
-                        val result = try {
-                            val base = URL(url)
-                            if (base.protocol !in setOf("http", "https")) throw Exception(text("android.update.protocol"))
-                            val manifestURL = URL(url.trimEnd('/') + "/version.json?t=" + System.currentTimeMillis())
-                            connection = (manifestURL.openConnection() as HttpURLConnection).apply {
-                                connectTimeout = 10000
-                                readTimeout = 15000
-                                instanceFollowRedirects = true
-                                requestMethod = "GET"
-                            }
-                            connection!!.connect()
-                            if (connection!!.responseCode !in 200..299) throw Exception(text("android.update.http", connection!!.responseCode))
-                            val bytes = connection!!.inputStream.use { input -> input.readBytes() }
-                            if (bytes.size > 1024 * 1024) throw Exception(text("android.update.manifest_size"))
-                            Pair(true, String(bytes, Charsets.UTF_8))
-                        } catch (e: Exception) {
-                            Pair(false, e.message ?: text("android.network.error"))
-                        } finally {
-                            connection?.disconnect()
-                        }
-                        val payload = JSONObject.quote(result.second)
-                        runOnUiThread {
-                            if (::web.isInitialized) web.evaluateJavascript("window.__preferansUpdateResult($requestId,${result.first},$payload)", null)
-                        }
-                    }.start()
-                }
-                @JavascriptInterface fun installUpdate(url: String) {
+                // Обновление с GitHub: адрес и SHA-256 приходят из приложения (оно читает их из выпуска на GitHub).
+                @JavascriptInterface fun installUpdate(url: String, sha256: String) {
                     val parsed = try { Uri.parse(url) } catch (_: Exception) { null }
-                    if (parsed?.scheme !in setOf("http", "https")) {
+                    val host = parsed?.host?.lowercase() ?: ""
+                    val allowedHost = host == "github.com" || host.endsWith(".githubusercontent.com")
+                    if (parsed?.scheme != "https" || !allowedHost || !Regex("^[0-9a-fA-F]{64}$").matches(sha256)) {
                         toast(text("android.update.address"))
                         return
                     }
-                    Thread { downloadAndInstall(url) }.start()
-                }
-            }, "PreferansAndroid")
+                    Thread { downloadAndInstall(url, sha256.lowercase()) }.start()
+                }            }, "PreferansAndroid")
             web.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     val u = request.url
@@ -268,7 +240,7 @@ class MainActivity : Activity() {
             }
         }.start()
     }
-    private fun downloadAndInstall(url: String) {
+    private fun downloadAndInstall(url: String, expectedSha256: String) {
         var connection: HttpURLConnection? = null
         try {
             toast(text("android.update.downloading"))
@@ -282,6 +254,7 @@ class MainActivity : Activity() {
             if (connection.responseCode !in 200..299) throw Exception("HTTP ${connection.responseCode}")
             if (connection.contentLengthLong > 128L * 1024 * 1024) throw Exception(text("android.update.apk_size"))
             val target = File(cacheDir, "preferans-update.apk")
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
             connection.inputStream.use { input ->
                 target.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
@@ -291,9 +264,15 @@ class MainActivity : Activity() {
                         if (count < 0) break
                         total += count
                         if (total > 128L * 1024 * 1024) throw Exception(text("android.update.apk_size"))
+                        digest.update(buffer, 0, count)
                         output.write(buffer, 0, count)
                     }
                 }
+            }
+            val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+            if (actualSha256 != expectedSha256) {
+                target.delete()
+                throw Exception(text("android.update.hash"))
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
                 toast(text("android.update.permission"))

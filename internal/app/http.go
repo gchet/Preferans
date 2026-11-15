@@ -34,6 +34,7 @@ type Request struct {
 	Appearance Appearance   `json:"appearance"`
 	LogEnabled bool         `json:"logEnabled"`
 	Message    string       `json:"message,omitempty"`
+	Version    string       `json:"version,omitempty"`
 }
 
 func (a *App) RPC(r Request) (any, error) {
@@ -74,6 +75,10 @@ func (a *App) RPC(r Request) (any, error) {
 		return nil, a.AssignBot(r.Seat, r.ModelID)
 	case "room-service":
 		return nil, a.SetRoomService(r.URL)
+	case "update-check":
+		return a.CheckUpdate(r.Version)
+	case "update-install":
+		return nil, a.InstallUpdate()
 	case "client-error":
 		a.LogClientError(r.Message)
 		return nil, nil

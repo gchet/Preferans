@@ -27,7 +27,7 @@ APK по-прежнему подписывается существующим de
 или удалите блок network. project.local.json исключён из Git.
 
 - tools.androidSdk, tools.zig, tools.gradle — пути инструментов. Пустой Gradle использует Wrapper.
-- network.updateAddressHint — подсказка адреса компьютера для обновления APK и переноса настроек ИИ.
+- network.updateAddressHint — подсказка адреса компьютера для переноса настроек ИИ по Wi-Fi. Само приложение обновляется с GitHub (см. docs/RELEASES.md).
 - deployment.server — SSH-адрес для Update-Signaling.ps1 -Deploy.
 
 Пароли и API-ключи в конфигурацию сборки не помещаются. Значения network встраиваются

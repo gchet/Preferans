@@ -12,6 +12,7 @@ import (
 
 	"preferans/config"
 	"preferans/internal/app"
+	"preferans/internal/selfupdate"
 	"preferans/internal/update"
 	"preferans/web"
 )
@@ -39,6 +40,9 @@ func main() {
 		}
 		name := "Preferans-2" // отдельный каталог данных: версия 2.x не смешивает настройки и сохранения с 1.x
 		*data = filepath.Join(d, name)
+	}
+	if executable, e := os.Executable(); e == nil {
+		selfupdate.CleanupOld(executable) // файл прежней версии после обновления
 	}
 	a := app.New(*data)
 	appLanguage = a.Status().Appearance.Language

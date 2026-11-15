@@ -27,6 +27,7 @@ import {defaultRules, rulesForm, readRules, rulesSummary, type TableRules} from 
 import { cardDrag } from "./card-drag";
 import { ordered, face, poolDrawing, remainingMinutes } from "./table-art";
 import { VoiceChat, voiceIcon } from './voice';
+import {confirmDialog} from './confirm-dialog';
 import {RoomUI,roomVoice,type RoomStatus} from './rooms';
 import './rooms.css';
 import './exit-app';
@@ -114,6 +115,7 @@ interface View {
   history: Ledger[];
 }
 interface Status extends RoomStatus {
+  update?: UpdateInfo;
   aiReview?: AIReview;
   aiEnabled?: boolean;
   logPath?: string;
@@ -138,10 +140,14 @@ interface SaveInfo {
   host: boolean;
   names: string[];
 }
-interface UpdateManifest {
-  versionCode?: number;
-  versionName?: string;
-  apk?: string;
+interface UpdateInfo {
+  state: string;
+  version: string;
+  progress: number;
+  error?: string;
+  canInstall: boolean;
+  apkUrl?: string;
+  apkSha256?: string;
 }
 const $ = <T extends HTMLElement = HTMLElement>(s: string) =>
   document.querySelector<T>(s)!;
@@ -174,40 +180,8 @@ let previous = "";
 let startWaitingTable = '';
 let busy = false;
 let lastError = "";
-let pendingUpdateURL = "";
-let autoUpdateChecked = false;
-type NativeUpdateCallback = (ok: boolean, payload: string) => void;
-const nativeUpdateCallbacks: Record<number, NativeUpdateCallback> = {};
-let nativeUpdateRequestID = 0;
-// Android performs the manifest request natively because some WebView builds
-// block localhost-to-LAN requests even when the server sends CORS headers.
-(window as any).__preferansUpdateResult = (id: number, ok: boolean, payload: string) => {
-  const callback = nativeUpdateCallbacks[id];
-  if (!callback) return;
-  delete nativeUpdateCallbacks[id];
-  callback(ok, payload);
-};
-function requestNativeUpdateManifest(base: URL): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const id = ++nativeUpdateRequestID;
-    const timer = window.setTimeout(() => {
-      delete nativeUpdateCallbacks[id];
-      reject(Error(t("web.main.text281")));
-    }, 15000);
-    nativeUpdateCallbacks[id] = (ok, payload) => {
-      window.clearTimeout(timer);
-      if (ok) resolve(payload);
-      else reject(Error(payload || t("web.main.text280")));
-    };
-    try {
-      window.PreferansAndroid!.checkUpdate(base.toString(), id);
-    } catch (e) {
-      window.clearTimeout(timer);
-      delete nativeUpdateCallbacks[id];
-      reject(e);
-    }
-  });
-}
+let updateChecked = false;
+let lastUpdateError = "";
 let currentPanel = "";
 const safeJoin = (value: string[] | null | undefined, separator = "\n") =>
   (value || []).join(separator);
@@ -759,9 +733,8 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
   if (kind === "rules") $("#panel-body").innerHTML = rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), false, true) + rulesHTML;
   if (kind === "settings")
     $("#panel-body").innerHTML =
-      `<div class="settings-tabs" role="tablist" aria-label="${t("web.main.text080")}">${[["game",t("web.main.text078")],["cards",t("web.main.text077")],["connection",t("web.main.text076")],["ai",t("web.ai.tab")]].map(([id,label]) => `<button type="button" role="tab" id="settings-tab-${id}" data-settings-tab="${id}" aria-controls="settings-${id}" aria-selected="${id === "game"}">${label}</button>`).join("")}</div><form id="settings-form"><section id="settings-game" role="tabpanel" aria-labelledby="settings-tab-game"></section><section id="settings-cards" role="tabpanel" aria-labelledby="settings-tab-cards" hidden><h3>${t("web.main.text077")}</h3><div class="deck-options">${decks.map(([id, name]) => `<div class="deck-choice"><label class="deck-option"><input type="radio" name="deck" value="${id}" ${appearance.deck === id ? "checked" : ""}><span class="deck-thumb card" data-deck-thumb="${id}">${face(6, id)}</span><strong>${name}</strong></label><label class="check"><input type="checkbox" name="frame-${id}" ${appearance.cardFrames?.[id] !== false ? "checked" : ""}>${t("web.main.text079")}</label></div>`).join("")}</div><div id="deck-preview" class="deck-preview" aria-label="${t("web.main.text081")}"></div><h3>${t("web.main.text082")}</h3><div class="back-options">${backs.map(([id,name]) => `<label class="deck-option"><input type="radio" name="back" value="${id}" ${(appearance.back || "plaid") === id ? "checked" : ""}><span class="card-back back-preview" data-back="${id}"></span><strong>${name}</strong></label>`).join("")}</div></section><section id="settings-connection" role="tabpanel" aria-labelledby="settings-tab-connection" hidden><div id="service-block" hidden><h3>${t("web.connection.service_title")}</h3><p class="muted">${t("web.connection.service_help")}</p><label>${t("web.connection.service_mine")}<input id="service-code-mine" readonly spellcheck="false" placeholder="${t("web.connection.service_loading")}"></label><button type="button" id="copy-service-code">${t("web.connection.service_copy")}</button><label>${t("web.connection.service_other")}<input name="room-service-url" spellcheck="false" autocomplete="off" value="${esc(appearance.roomServiceURL || "")}" placeholder="PREF2.…"></label><p class="muted">${t("web.connection.service_other_help")}</p></div><h3>${t("web.connection.ntfy_title")}</h3><label>${t("web.connection.ntfy_label")}<input name="ntfy-servers" spellcheck="false" autocomplete="off" value="${esc(appearance.ntfyServers || "")}" placeholder="https://ntfy.sh"></label><p class="muted">${t("web.connection.ntfy_help")}</p><label class="check"><input type="checkbox" name="log-enabled" ${!appearance.logDisabled ? "checked" : ""}>${t("web.main.text088")}</label><p class="muted">${t("web.main.text089")} <code>-c</code> ${t("web.main.text090")} <code>--config</code>.</p>${window.PreferansAndroid ? `<h3>${t("web.main.text091")}</h3><label>${t("web.main.text092")}<input name="update-url" type="url" value="${esc(appearance.updateURL || "")}" placeholder="${esc(networkConfig.updateAddressHint)}"></label><p class="muted">${t("web.main.text093")}</p><button type="button" id="check-update">${t("web.main.text094")}</button><div id="update-result" class="muted" role="status"></div>` : ""}</section><section id="settings-ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden></section><button class="primary">${t("web.main.text095")}</button></form><hr><button id="leave">${t("web.main.text096")}</button><p class="muted">${t("web.main.text097")}</p>`;
+      `<div class="settings-tabs" role="tablist" aria-label="${t("web.main.text080")}">${[["game",t("web.main.text078")],["cards",t("web.main.text077")],["connection",t("web.main.text076")],["ai",t("web.ai.tab")]].map(([id,label]) => `<button type="button" role="tab" id="settings-tab-${id}" data-settings-tab="${id}" aria-controls="settings-${id}" aria-selected="${id === "game"}">${label}</button>`).join("")}</div><form id="settings-form"><section id="settings-game" role="tabpanel" aria-labelledby="settings-tab-game"></section><section id="settings-cards" role="tabpanel" aria-labelledby="settings-tab-cards" hidden><h3>${t("web.main.text077")}</h3><div class="deck-options">${decks.map(([id, name]) => `<div class="deck-choice"><label class="deck-option"><input type="radio" name="deck" value="${id}" ${appearance.deck === id ? "checked" : ""}><span class="deck-thumb card" data-deck-thumb="${id}">${face(6, id)}</span><strong>${name}</strong></label><label class="check"><input type="checkbox" name="frame-${id}" ${appearance.cardFrames?.[id] !== false ? "checked" : ""}>${t("web.main.text079")}</label></div>`).join("")}</div><div id="deck-preview" class="deck-preview" aria-label="${t("web.main.text081")}"></div><h3>${t("web.main.text082")}</h3><div class="back-options">${backs.map(([id,name]) => `<label class="deck-option"><input type="radio" name="back" value="${id}" ${(appearance.back || "plaid") === id ? "checked" : ""}><span class="card-back back-preview" data-back="${id}"></span><strong>${name}</strong></label>`).join("")}</div></section><section id="settings-connection" role="tabpanel" aria-labelledby="settings-tab-connection" hidden><div id="service-block" hidden><h3>${t("web.connection.service_title")}</h3><p class="muted">${t("web.connection.service_help")}</p><label>${t("web.connection.service_mine")}<input id="service-code-mine" readonly spellcheck="false" placeholder="${t("web.connection.service_loading")}"></label><button type="button" id="copy-service-code">${t("web.connection.service_copy")}</button><label>${t("web.connection.service_other")}<input name="room-service-url" spellcheck="false" autocomplete="off" value="${esc(appearance.roomServiceURL || "")}" placeholder="PREF2.…"></label><p class="muted">${t("web.connection.service_other_help")}</p></div><h3>${t("web.connection.ntfy_title")}</h3><label>${t("web.connection.ntfy_label")}<input name="ntfy-servers" spellcheck="false" autocomplete="off" value="${esc(appearance.ntfyServers || "")}" placeholder="https://ntfy.sh"></label><p class="muted">${t("web.connection.ntfy_help")}</p><label class="check"><input type="checkbox" name="log-enabled" ${!appearance.logDisabled ? "checked" : ""}>${t("web.main.text088")}</label><p class="muted">${t("web.main.text089")} <code>-c</code> ${t("web.main.text090")} <code>--config</code>.</p><h3>${t("web.update.title")}</h3><label class="check"><input type="checkbox" name="auto-update" ${appearance.autoUpdate !== false ? "checked" : ""}>${t("web.update.auto")}</label><p class="muted">${t("web.update.auto_help")}</p></section><section id="settings-ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden></section><button class="primary">${t("web.main.text095")}</button></form><hr><button id="leave">${t("web.main.text096")}</button><p class="muted">${t("web.main.text097")}</p>`;
   if (kind === "settings") {
-    setupUpdateAddressHint();
     if(status.aiEnabled !== false) void aiUI.mount($("#settings-ai"), appearance.updateURL || "",!!appearance.debug);
     else { document.querySelector("#settings-tab-ai")?.remove(); document.querySelector("#settings-ai")?.remove(); }
     // Публичное лобби выбирает сервис комнат автоматически: поля кода скрыты (#service-block), код не загружаем.
@@ -824,101 +797,41 @@ function setupServiceCode() {
   if (!input) return;
   rpc<string>('service-code').then(code => { input.value = code; }).catch(e => { input.value = ''; input.placeholder = e instanceof Error ? e.message : String(e); });
 }
-function setupUpdateAddressHint() {
-  const input = document.querySelector<HTMLInputElement>('[name="update-url"]');
-  if (!input) return;
-  input.title = t('web.update.address_hint');
-  input.insertAdjacentHTML('afterend', `<small class="muted">${t('web.update.address_hint')}</small>`);
-  const fill = () => {
-    if (input.value.trim() || !input.placeholder) return;
-    input.value = input.placeholder;
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-    input.dispatchEvent(new Event('change', {bubbles: true}));
-  };
-  input.addEventListener('dblclick', fill);
-  let down: {x: number; y: number; time: number} | null = null;
-  let previousTap = 0;
-  input.addEventListener('pointerdown', event => {
-    if (event.pointerType !== 'touch') return;
-    down = {x: event.clientX, y: event.clientY, time: performance.now()};
-  });
-  input.addEventListener('pointercancel', () => {down = null; previousTap = 0;});
-  input.addEventListener('pointerup', event => {
-    if (event.pointerType !== 'touch' || !down) return;
-    const now = performance.now();
-    const tap = now - down.time <= interfaceConfig.updateAddressDoubleTapMs &&
-      Math.hypot(event.clientX - down.x, event.clientY - down.y) <= interfaceConfig.buttonCancelDistancePx;
-    down = null;
-    if (!tap) {previousTap = 0; return;}
-    if (previousTap && now - previousTap <= interfaceConfig.updateAddressDoubleTapMs) {
-      fill();
-      previousTap = 0;
-    } else previousTap = now;
-  });
-}
-async function checkForUpdate(silent = false) {
-  const input = document.querySelector<HTMLInputElement>('[name="update-url"]');
-  const result = document.querySelector<HTMLElement>("#update-result");
-  const rawBase = input?.value.trim().replace(/\/+$/, "") || "";
-  if (!rawBase) {
-    if (silent) return;
-    throw Error(t("web.main.text043"));
-  }
-  let base: URL;
+// Версия установленного приложения: на Android из пакета, иначе подставляется при сборке («dev» — локальная сборка).
+const installedVersion = () => window.PreferansAndroid?.getVersionName?.() || appVersion;
+// При запуске проверяем новую версию на GitHub (проверку выполняет приложение) и спрашиваем, обновляться ли.
+async function checkForUpdate(s: Status) {
+  if (updateChecked || s.appearance.autoUpdate === false || installedVersion() === "dev") return;
+  updateChecked = true;
+  let info: UpdateInfo | null = null;
   try {
-    base = new URL(rawBase + "/");
-    if (!["http:", "https:"].includes(base.protocol)) throw Error();
+    info = await rpc<UpdateInfo | null>("update-check", {version: installedVersion()});
   } catch {
-    if (silent) return;
-    throw Error(t("web.main.text042"));
-  }
-  if (result) result.textContent = t("web.main.text041");
-  let manifestText: string;
-  try {
-    if (window.PreferansAndroid?.checkUpdate) {
-      manifestText = await requestNativeUpdateManifest(base);
-    } else {
-      const response = await fetch(new URL(`version.json?t=${Date.now()}`, base), { cache: "no-store" });
-      if (!response.ok) throw Error(`${t("web.main.text040", {p0: response.status})}`);
-      manifestText = await response.text();
-    }
-  } catch (e) {
-    if (silent) return;
-    throw e;
-  }
-  let info: UpdateManifest;
-  try {
-    info = JSON.parse(manifestText) as UpdateManifest;
-  } catch {
-    if (silent) return;
-    throw Error(t("web.main.text039"));
-  }
-  const code = Number(info.versionCode || 0);
-  const name = String(info.versionName || code || t("web.main.text038"));
-  const installed = window.PreferansAndroid?.getVersionCode?.() || 0;
-  if (!code || !info.apk) {
-    if (silent) return;
-    throw Error(t("web.main.text037"));
-  }
-  try {
-    pendingUpdateURL = new URL(info.apk, base).toString();
-  } catch {
-    if (silent) return;
-    throw Error(t("web.main.text036"));
-  }
-  if (code <= installed) {
-    if (result) result.textContent = `${t("web.main.text035", {p0: window.PreferansAndroid?.getVersionName?.() || installed})}`;
-    notice(t("web.main.text034"));
     return;
   }
-  if (!result) {
-    showPanel("settings");
+  if (!info || info.state !== "available") return;
+  if (!(await confirmDialog(t("web.update.prompt", {p0: info.version}), t("web.update.yes"), t("web.update.no"), "primary"))) return;
+  if (info.canInstall) {
+    try {
+      await rpc("update-install");
+      notice(t("web.update.downloading", {p0: 0}));
+    } catch (e) {
+      notice(t("web.update.failed", {p0: e instanceof Error ? e.message : String(e)}));
+    }
+  } else if (window.PreferansAndroid?.installUpdate && info.apkUrl && info.apkSha256) {
+    window.PreferansAndroid.installUpdate(info.apkUrl, info.apkSha256);
+    notice(t("web.update.android_started"));
   }
-  const updateResult = document.querySelector<HTMLElement>("#update-result");
-  if (updateResult) {
-    updateResult.innerHTML = `<span>${t("web.main.text032", {p0: esc(name)})}</span> <button type="button" id="install-update" class="primary">${t("web.main.text033")}</button>`;
+}
+function showUpdateProgress(s: Status) {
+  const u = s.update;
+  if (!u) return;
+  if (u.state === "downloading") notice(t("web.update.downloading", {p0: u.progress}));
+  else if (u.state === "installing") notice(t("web.update.restarting"));
+  else if (u.state === "error" && u.error && u.error !== lastUpdateError) {
+    lastUpdateError = u.error;
+    notice(t("web.update.failed", {p0: u.error}));
   }
-  notice(`${t("web.main.text031", {p0: name})}`);
 }
 async function run(fn: () => Promise<void>) {
   if (busy) return;
@@ -1005,21 +918,6 @@ document.addEventListener("click", (e) => {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
     notice(t("web.main.text027"));
-    return;
-  }
-  if (b.id === "check-update") {
-    void run(checkForUpdate);
-    return;
-  }
-  if (b.id === "install-update") {
-    if (!pendingUpdateURL) return;
-    if (window.PreferansAndroid?.installUpdate) {
-      window.PreferansAndroid.installUpdate(pendingUpdateURL);
-      notice(t("web.main.text026"));
-    } else {
-      window.open(pendingUpdateURL, "_blank");
-      notice(t("web.main.text025"));
-    }
     return;
   }
   if (b.id === "close-panel") {
@@ -1166,7 +1064,8 @@ document.addEventListener("submit", (e) => {
           back: String(d.get("back") || "plaid"),
           logDisabled: !d.has("log-enabled"),
           logPath: String(d.get('log-path') ?? appearance.logPath ?? '').trim(),
-          updateURL: String(d.get("update-url") ?? appearance.updateURL ?? "").trim(),
+          updateURL: appearance.updateURL || "",
+          autoUpdate: d.has("auto-update"),
           ntfyServers: String(d.get("ntfy-servers") || "").trim(),
           defaultRoom: String(d.get('default-room') ?? appearance.defaultRoom ?? ''),
         },
@@ -1315,10 +1214,8 @@ async function refreshState() {
       if (total) total.textContent = String(remainingMinutes(s.view));
     }
   }
-  if (!s.roomLocal && !autoUpdateChecked && window.PreferansAndroid && s.appearance.updateURL) {
-    autoUpdateChecked = true;
-    void checkForUpdate(true);
-  }
+  void checkForUpdate(s);
+  showUpdateProgress(s);
 }
 
 const cancelCardDrag = cardDrag(() => {
