@@ -19,6 +19,7 @@ type RoomSnap struct {
 	CreatorName    string   `json:"creatorName,omitempty"`
 	Deleted        bool     `json:"deleted,omitempty"`
 	DeletedParties []string `json:"deletedParties,omitempty"`
+	ClosedTables   []ClosedTable `json:"closedTables,omitempty"`
 	Parties        []Party  `json:"parties,omitempty"`
 }
 
@@ -34,6 +35,7 @@ func (s *Server) snapshot() []RoomSnap {
 		snap := RoomSnap{ID: r.ID, Updated: r.Updated, Deleted: r.Deleted}
 		if !r.Deleted {
 			snap.Name = r.Name
+			snap.ClosedTables = append([]ClosedTable(nil), r.ClosedTables...)
 			snap.Created, snap.Creator, snap.CreatorName = r.Created, r.Creator, r.CreatorName
 			snap.Parties = append([]Party(nil), r.Parties...)
 			for i := range snap.Parties {
@@ -151,6 +153,19 @@ func (s *Server) mergeLocked(in []RoomSnap) (int, error) {
 			}
 			changed[sn.ID] = true
 		}
+		for i, ct := range sn.ClosedTables {
+			if i >= maxClosedTables {
+				break
+			}
+			if r.noteClosed(ct.ID, ct.At) {
+				changed[sn.ID] = true
+			}
+			if r.Table != nil && r.Table.ID == ct.ID && r.Table.Opened <= ct.At {
+				r.Table = nil
+				s.events[r.ID] = nil
+				changed[sn.ID] = true
+			}
+		}
 		for _, p := range sn.Parties {
 			if !validSnapParty(&p) || r.DeletedParties[p.ID] {
 				continue
@@ -212,8 +227,9 @@ func mergeCreator(r *Room, sn RoomSnap) bool {
 	return true
 }
 
-// resolveNames: после слияния две живые комнаты могли получить одно название. Проигрывает комната с большим ID
-// (так выбирают все реплики одинаково): ей добавляется номер.
+// resolveNames: после слияния две живые комнаты могли получить одно название. Название остаётся у более старой
+// комнаты (по времени создания; созданные прежними версиями без времени — старейшие), при равенстве — у меньшего ID:
+// все реплики выбирают одинаково. Более новой комнате добавляется номер.
 func (s *Server) resolveNames(changed map[string]bool) {
 	ids := make([]string, 0, len(s.Catalog))
 	for id, r := range s.Catalog {
@@ -221,7 +237,13 @@ func (s *Server) resolveNames(changed map[string]bool) {
 			ids = append(ids, id)
 		}
 	}
-	sort.Strings(ids)
+	sort.Slice(ids, func(i, j int) bool {
+		a, b := s.Catalog[ids[i]], s.Catalog[ids[j]]
+		if a.Created != b.Created {
+			return a.Created < b.Created
+		}
+		return a.ID < b.ID
+	})
 	used := map[string]bool{}
 	for _, id := range ids {
 		r := s.Catalog[id]

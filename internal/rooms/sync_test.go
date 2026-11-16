@@ -3,6 +3,7 @@ package rooms
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func snapOf(t *testing.T, s *Server) []RoomSnap {
@@ -139,6 +140,58 @@ func TestMergeRenameLatestWinsAndNameConflictIsResolved(t *testing.T) {
 	}
 	if x, y := liveNames(c), liveNames(d); len(x) != len(y) {
 		t.Fatalf("%v %v", x, y)
+	}
+}
+
+func TestMergeKeepsNameOfOlderRoom(t *testing.T) {
+	c, _ := New("")
+	d, _ := New("")
+	c.now = func() time.Time { return time.Unix(1000, 0) }
+	d.now = func() time.Time { return time.Unix(2000, 0) }
+	older := request(t, c, Request{Op: "create", Name: "Север"}).Room
+	newer := request(t, d, Request{Op: "create", Name: "север"}).Room
+	if _, err := c.Merge(snapOf(t, d)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Merge(snapOf(t, c)); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []*Server{c, d} {
+		if s.Catalog[older.ID].Name != "Север" || s.Catalog[newer.ID].Name == "север" || strings.EqualFold(s.Catalog[newer.ID].Name, s.Catalog[older.ID].Name) {
+			t.Fatalf("старая комната должна сохранить название: %q %q", s.Catalog[older.ID].Name, s.Catalog[newer.ID].Name)
+		}
+	}
+}
+
+func TestClosedTableTombstoneReplicatesButNotReopenedTable(t *testing.T) {
+	a, _ := New("")
+	b, _ := New("")
+	room := request(t, a, Request{Op: "create", Name: "Север"}).Room
+	b.Merge(snapOf(t, a))
+	// на b остался устаревший стол вчерашней партии, на a его закрывают (стола там нет: игроки сидели на другом сервисе)
+	b.Catalog[room.ID].Table = &Table{ID: "old", Host: "h", Players: []string{"h", "", ""}, Bots: []bool{false, false, false}, Keys: []string{"", "", ""}, Opened: 10}
+	a.Catalog[room.ID].noteClosed("old", 500)
+	if _, err := b.Merge(snapOf(t, a)); err != nil {
+		t.Fatal(err)
+	}
+	if b.Catalog[room.ID].Table != nil {
+		t.Fatal("надгробие должно закрыть устаревший стол на другой реплике")
+	}
+	// тот же стол открыт снова позже закрытия: надгробие его не закрывает
+	b.Catalog[room.ID].Table = &Table{ID: "old", Host: "h", Players: []string{"h", "", ""}, Bots: []bool{false, false, false}, Keys: []string{"", "", ""}, Opened: 900}
+	if _, err := b.Merge(snapOf(t, a)); err != nil {
+		t.Fatal(err)
+	}
+	if b.Catalog[room.ID].Table == nil {
+		t.Fatal("стол, открытый после закрытия, должен остаться")
+	}
+	// закрытие через op "close" записывает надгробие и там, где стола нет
+	c, _ := New("")
+	rc := request(t, c, Request{Op: "create", Name: "Юг"}).Room
+	request(t, c, Request{Op: "join", Room: rc.ID})
+	request(t, c, Request{Op: "close", Room: rc.ID, TableID: "t9"})
+	if got := c.Catalog[rc.ID].ClosedTables; len(got) != 1 || got[0].ID != "t9" {
+		t.Fatalf("%+v", got)
 	}
 }
 

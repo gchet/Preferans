@@ -39,11 +39,46 @@ type Table struct {
 	Players []string `json:"players"`
 	Bots    []bool   `json:"bots"`
 	Keys    []string `json:"keys,omitempty"`
+	// Opened — когда стол зарегистрирован в сервисе (unix-секунды). Закрытие стола, записанное позже, закрывает его
+	// и на других репликах каталога; стол, открытый после закрытия (повторный вход в ту же партию), закрытие не трогает.
+	Opened int64 `json:"opened,omitempty"`
 }
+
+// ClosedTable — надгробие закрытого стола: реплицируется вместе с комнатой, чтобы устаревший стол не блокировал комнату
+// на сервисе, где закрытие не выполнялось (игроки в это время сидели на другом сервисе).
+type ClosedTable struct {
+	ID string `json:"id"`
+	At int64  `json:"at"`
+}
+
+const maxClosedTables = 20
+
+// noteClosed записывает надгробие стола; возвращает true, если запись изменилась.
+func (r *Room) noteClosed(id string, at int64) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for i := range r.ClosedTables {
+		if r.ClosedTables[i].ID == id {
+			if at > r.ClosedTables[i].At {
+				r.ClosedTables[i].At = at
+				return true
+			}
+			return false
+		}
+	}
+	r.ClosedTables = append(r.ClosedTables, ClosedTable{ID: id, At: at})
+	if len(r.ClosedTables) > maxClosedTables {
+		r.ClosedTables = append([]ClosedTable(nil), r.ClosedTables[len(r.ClosedTables)-maxClosedTables:]...)
+	}
+	return true
+}
+
 type Room struct {
 	Deleted        bool            `json:"deleted,omitempty"`
 	RemovedMembers map[string]bool `json:"removedMembers,omitempty"`
 	DeletedParties map[string]bool `json:"deletedParties,omitempty"`
+	ClosedTables   []ClosedTable   `json:"closedTables,omitempty"`
 	ID             string          `json:"id"`
 	Updated        int64           `json:"updated,omitempty"`
 	Created        int64           `json:"created,omitempty"`
@@ -150,6 +185,7 @@ func copyRoom(r *Room) *Room {
 	public.Parties = nil
 	public.RemovedMembers = nil
 	public.DeletedParties = nil
+	public.ClosedTables = nil
 	b, _ := json.Marshal(public)
 	var c Room
 	_ = json.Unmarshal(b, &c)
@@ -460,6 +496,7 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 		c.Keys = append([]string{}, t.Keys...)
 		c.Host = id
 		c.Name = r.Members[mi].Name
+		c.Opened = s.now().Unix()
 		r.Table = &c
 		if e := s.save(); e != nil {
 			r.Table = nil
@@ -480,6 +517,10 @@ func (s *Server) handle(q Request, admin bool) (Response, error) {
 				return out, e
 			}
 			s.events[r.ID] = nil
+		}
+		// Закрытие записывается даже там, где стола не было: надгробие дойдёт до остальных реплик каталога.
+		if q.TableID != "" && r.noteClosed(q.TableID, s.now().Unix()) {
+			_ = s.save()
 		}
 	case "signal":
 		if q.Signal == nil {

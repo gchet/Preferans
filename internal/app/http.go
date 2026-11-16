@@ -82,6 +82,9 @@ func (a *App) RPC(r Request) (any, error) {
 	case "client-error":
 		a.LogClientError(r.Message)
 		return nil, nil
+	case "voice-log":
+		a.LogVoice(r.Message)
+		return nil, nil
 	case "voice-send":
 		return nil, a.SendVoice(r.Voice)
 	case "voice-poll":

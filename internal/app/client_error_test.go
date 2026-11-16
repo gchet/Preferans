@@ -40,3 +40,26 @@ func TestRoomCopyNeverHasNilMembers(t *testing.T) {
 		t.Fatal("members не должен быть nil")
 	}
 }
+func TestVoiceEventsAreLoggedLineByLine(t *testing.T) {
+	a := New(t.TempDir())
+	defer a.Close()
+	for i := 0; i < 3; i++ {
+		a.LogVoice(strings.Repeat("x\n", 40)) // больше maxVoiceLogLines строк за раз не пишется
+	}
+	a.LogVoice("место 3: соединение=connected\n\nместо 3: пары succeeded:1\n" + strings.Repeat("я", 900))
+	a.mu.Lock()
+	logs := append([]string(nil), a.logs...)
+	a.mu.Unlock()
+	found, long := 0, 0
+	for _, l := range logs {
+		if strings.Contains(l, "голос: место 3: соединение=connected") || strings.Contains(l, "голос: место 3: пары succeeded:1") {
+			found++
+		}
+		if strings.Contains(l, "голос: яяя") && len([]rune(l)) > maxVoiceLogRunes+60 {
+			long++
+		}
+	}
+	if found != 2 || long != 0 {
+		t.Fatalf("found=%d long=%d", found, long)
+	}
+}

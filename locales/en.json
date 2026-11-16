@@ -639,6 +639,8 @@
   "go.rooms.not_creator": "Only the creator can rename or delete a room",
   "go.log.rotated": "Log continued: the previous part is saved in file %s",
   "go.log.client_error": "Interface error: %s",
+  "go.log.voice": "voice: %s",
+  "go.rooms.lobby_unsettled": "The room service is still being determined: some players are not responding yet. Wait a few seconds and try again, otherwise two rooms with the same name could appear.",
   "go.update.check_failed": "Update check failed: %v",
   "go.update.found": "New version found: installed %s, available %s",
   "go.update.not_supported": "On this platform the system installer performs the update",

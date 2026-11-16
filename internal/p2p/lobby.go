@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
+	manet "github.com/multiformats/go-multiaddr/net"
 )
 
 // LobbyTopic — общая тема публичного лобби на ntfy.sh. Все копии приложения читают её,
@@ -56,9 +58,34 @@ func (n *Node) relayAddrs() []string {
 	return out
 }
 
-// Announce публикует объявление в лобби. Если адресов ещё нет (relay не зарезервирован), ничего не делает.
+// lanAnnounceAddrs — до двух адресов локальной сети узла (частные IPv4/IPv6, не loopback). Игрок в той же Wi-Fi достаёт
+// ведущего напрямую, даже если у ведущего (телефон) relay не зарезервирован. Публичные адреса по-прежнему не публикуются.
+func (n *Node) lanAnnounceAddrs() []string {
+	if n.cfg.LoopbackOnly {
+		return nil
+	}
+	var out []string
+	for _, s := range n.pick() {
+		if strings.Contains(s, "/p2p-circuit") {
+			continue
+		}
+		if m, err := ma.NewMultiaddr(s); err == nil && manet.IsPrivateAddr(m) && !manet.IsIPLoopback(m) {
+			if out = append(out, s); len(out) >= 2 {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// announceAddrs — адреса для объявления: relay и (до двух) адреса локальной сети.
+func (n *Node) announceAddrs() []string {
+	return append(n.relayAddrs(), n.lanAnnounceAddrs()...)
+}
+
+// Announce публикует объявление в лобби. Если адресов ещё нет (relay не зарезервирован и локальной сети нет), ничего не делает.
 func (n *Node) Announce(ctx context.Context, since int64) error {
-	addrs := n.relayAddrs()
+	addrs := n.announceAddrs()
 	if len(addrs) == 0 {
 		return fmt.Errorf("нет адресов relay для объявления")
 	}
@@ -68,7 +95,7 @@ func (n *Node) Announce(ctx context.Context, since int64) error {
 
 // AnnounceAddrs — адреса, которые Announce опубликовал бы сейчас (пусто, пока relay не зарезервирован).
 // По их изменению приложение объявляется сразу, не дожидаясь периода лобби.
-func (n *Node) AnnounceAddrs() []string { return n.relayAddrs() }
+func (n *Node) AnnounceAddrs() []string { return n.announceAddrs() }
 
 // IsMobile сообщает, что узел работает на телефоне или планшете.
 func (n *Node) IsMobile() bool { return n.cfg.Mobile }
@@ -121,12 +148,17 @@ func validAnnouncement(a Announcement) bool {
 		if len(s) > 220 || !strings.HasPrefix(s, "/") {
 			return false
 		}
-		// публикуем и принимаем только relay-адреса (в тестах без сети разрешены любые)
-		if !TestLoopbackEnabled() && !strings.Contains(s, "/p2p-circuit") {
+		// публикуем и принимаем только relay-адреса и адреса локальной сети (в тестах без сети разрешены любые)
+		if !TestLoopbackEnabled() && !strings.Contains(s, "/p2p-circuit") && !privateAnnounceAddr(s) {
 			return false
 		}
 	}
 	return true
+}
+
+func privateAnnounceAddr(s string) bool {
+	m, err := ma.NewMultiaddr(s)
+	return err == nil && manet.IsPrivateAddr(m) && !manet.IsIPLoopback(m)
 }
 
 // TestLoopbackEnabled — режим без публичной сети (тесты и PREFERANS_P2P_LOOPBACK=1).

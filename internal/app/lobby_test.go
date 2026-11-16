@@ -284,3 +284,85 @@ func TestLobbySkipsUnreachableHost(t *testing.T) {
 		return false
 	})
 }
+
+// Живой, но недоступный кандидат: пока его объявление свежее, комнаты не создаются (иначе на разошедшихся сервисах
+// появились бы две комнаты с одним названием); когда объявление устарело, создание снова разрешено.
+func TestLobbyBlocksRoomCreationWhileLiveCandidateUnreachable(t *testing.T) {
+	ts := ntfyLobbyStub()
+	defer ts.Close()
+	oldURL, oldPeriod := p2p.NtfyURL, lobbyPeriod
+	p2p.NtfyURL, lobbyPeriod = ts.URL, 250*time.Millisecond
+	defer func() { p2p.NtfyURL, lobbyPeriod = oldURL, oldPeriod }()
+
+	dead, err := p2p.NewNode(p2p.Config{LoopbackOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dead.Close()
+	stop := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			_ = dead.Announce(ctx, 50)
+			cancel()
+			select {
+			case <-stop:
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}()
+	a := New(t.TempDir())
+	defer a.Close()
+	a.lobbySince = 200
+	a.EnableLobby()
+	eventually(t, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.lobbyUnsettled
+	})
+	if _, err := a.RoomDirectory("create", "", "Север"); err == nil || !strings.Contains(err.Error(), "определяется") {
+		t.Fatalf("создание комнаты должно быть отклонено, получено: %v", err)
+	}
+	close(stop)
+	<-stopped
+	eventually(t, func() bool {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return !a.lobbyUnsettled
+	})
+	if r, err := a.RoomDirectory("create", "", "Север"); err != nil || r.Room == nil {
+		t.Fatalf("после устаревания объявления комната создаётся: %+v %v", r, err)
+	}
+}
+
+// Объявляется каждое живое устройство, а не только ведущий: тогда все видят одних и тех же кандидатов.
+func TestLobbyEveryDeviceAnnounces(t *testing.T) {
+	ts := ntfyLobbyStub()
+	defer ts.Close()
+	oldURL, oldPeriod := p2p.NtfyURL, lobbyPeriod
+	p2p.NtfyURL, lobbyPeriod = ts.URL, 250*time.Millisecond
+	defer func() { p2p.NtfyURL, lobbyPeriod = oldURL, oldPeriod }()
+
+	a, b := New(t.TempDir()), New(t.TempDir())
+	defer a.Close()
+	defer b.Close()
+	a.lobbySince, b.lobbySince = 100, 200
+	a.EnableLobby()
+	b.EnableLobby()
+	eventually(t, func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		anns, err := p2p.ReadLobby(ctx, time.Minute)
+		if err != nil {
+			return false
+		}
+		seen := map[int64]bool{}
+		for _, an := range anns {
+			seen[an.Since] = true
+		}
+		return seen[100] && seen[200]
+	})
+}

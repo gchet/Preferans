@@ -9,7 +9,11 @@ interface Remote {
   session: string; mic: boolean; seen: number; pc?: RTCPeerConnection;
   sender?: RTCRtpSender; audio?: HTMLAudioElement; call?: string;
   started: number; attempts: number; sent: boolean; ice: RTCIceCandidateInit[];
+  // Диагностика для журнала: счётчики кандидатов по типам (адреса не сохраняются) и признак потока аудио.
+  lc: Record<string, number>; rc: Record<string, number>; checked: number; rx: number; flow: boolean;
 }
+const candType = (c?: string) => / typ (\w+)/.exec(c || '')?.[1] || '?';
+const fmtCount = (c: Record<string, number>) => Object.entries(c).map(([k, v]) => `${k}:${v}`).join(',') || '-';
 const micSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/><path class="mic-slash" d="M3 3l18 18"/></svg>';
 export function voiceIcon(seat: number, own: boolean): string {
   const mic = own ? `<button type="button" class="voice-mic muted" data-microphone="${seat}" aria-label="${t("web.voice.text005")}" aria-pressed="false">${micSVG}</button>`
@@ -38,6 +42,49 @@ export class VoiceChat {
   private backgrounded = false;
   private outbound: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setInterval>;
+  private logBuf: string[] = [];
+  private logTimer = 0;
+  private logErrAt = 0;
+  // События голоса уходят в журнал приложения (пачками): по ним видно, на каком шаге рвётся связь между игроками.
+  private log(message: string) {
+    this.logBuf.push(message);
+    if (!this.logTimer) this.logTimer = window.setTimeout(() => this.flushLog(), 1500);
+  }
+  private flushLog() {
+    this.logTimer = 0;
+    const lines = this.logBuf.splice(0);
+    if (lines.length) void this.rpc('voice-log', {message: lines.join('\n')}).catch(() => {});
+  }
+  private async pairInfo(pc: RTCPeerConnection): Promise<{text: string; rx: number}> {
+    try {
+      const stats = await pc.getStats();
+      const byId = new Map<string, any>();
+      stats.forEach(s => byId.set(s.id, s));
+      let pair: any;
+      stats.forEach(s => { if (s.type === 'transport' && s.selectedCandidatePairId) pair = byId.get(s.selectedCandidatePairId); });
+      if (!pair) stats.forEach(s => { if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s; });
+      const states: Record<string, number> = {};
+      let rx = 0, tx = 0;
+      stats.forEach(s => {
+        if (s.type === 'candidate-pair') states[s.state] = (states[s.state] || 0) + 1;
+        if (s.type === 'inbound-rtp' && s.kind === 'audio') rx += s.bytesReceived || 0;
+        if (s.type === 'outbound-rtp' && s.kind === 'audio') tx += s.bytesSent || 0;
+      });
+      const l = pair && byId.get(pair.localCandidateId), rm = pair && byId.get(pair.remoteCandidateId);
+      const chosen = pair ? `${l?.candidateType}/${l?.protocol}${l?.networkType ? '/' + l.networkType : ''} ↔ ${rm?.candidateType}/${rm?.protocol}, rtt ${pair.currentRoundTripTime ?? '?'} с` : 'нет';
+      return {text: `пары ${fmtCount(states)}; выбрана ${chosen}; принято ${rx} Б, отправлено ${tx} Б`, rx};
+    } catch (e) { return {text: 'статистика недоступна', rx: 0}; }
+  }
+  private async checkFlow(seat: number, peer: Remote) {
+    const pc = peer.pc;
+    if (!pc) return;
+    const info = await this.pairInfo(pc);
+    if (peer.pc !== pc) return;
+    const flow = peer.rx >= 0 && info.rx > peer.rx;
+    if (peer.rx < 0) this.log(`место ${seat + 1}: проверка связи: ${info.text}`);
+    else if (flow !== peer.flow) this.log(`место ${seat + 1}: аудио ${flow ? 'идёт' : 'не принимается'} (микрофон там ${peer.mic ? 'включён' : 'выключен'}); ${info.text}`);
+    peer.flow = flow; peer.rx = info.rx; peer.checked = Date.now();
+  }
   constructor(private rpc: RPC, private notify: (message: string) => void) {
     try {
       const saved = sessionStorage.getItem('preferans-voice-resume');
@@ -49,6 +96,7 @@ export class VoiceChat {
       }
     } catch { /* Session storage may be unavailable in restricted WebViews. */ }
     this.timer = setInterval(() => void this.tick(), 100);
+    window.addEventListener('pagehide', () => this.flushLog());
     document.addEventListener('click', e => {
       const speaker=(e.target as Element).closest<HTMLButtonElement>('[data-speaker]');
       if(speaker && this.room){
@@ -84,6 +132,7 @@ export class VoiceChat {
     const room = status.view;
     if (room?.id !== this.room?.id || room?.seat !== this.room?.seat) {
       this.stop();
+      if (room) this.log(`голос: стол ${room.id.slice(0, 6)}, место ${room.seat + 1}`);
       this.room = room;
       this.session = crypto.randomUUID();
       this.after = 0;
@@ -97,7 +146,10 @@ export class VoiceChat {
       queueMicrotask(() => void this.toggle());
     }
     for (const [seat, peer] of this.peers) {
-      if (!room || room.players[seat]?.bot !== false || !this.connected[seat]) { this.close(peer); this.peers.delete(seat); }
+      if (!room || room.players[seat]?.bot !== false || !this.connected[seat]) {
+        this.log(`место ${seat + 1}: голос закрыт (${!room ? 'нет стола' : room.players[seat]?.bot !== false ? 'место занято ботом или пусто' : 'игровой канал с местом не подключён'})`);
+        this.close(peer); this.peers.delete(seat);
+      }
     }
     this.paint();
   }
@@ -132,12 +184,16 @@ export class VoiceChat {
         this.after = event.seq;
       }
       for (const [seat, peer] of this.peers) {
-        if (Date.now()-peer.seen > 12000) { this.close(peer); this.peers.delete(seat); continue; }
+        if (Date.now()-peer.seen > 12000) { this.log(`место ${seat + 1}: нет приветствий 12 с, голос закрыт`); this.close(peer); this.peers.delete(seat); continue; }
+        if (peer.pc?.connectionState === 'connected' && Date.now() - peer.checked > 20000) { peer.checked = Date.now(); void this.checkFlow(seat, peer); }
         if (this.room && this.room.seat < seat && (!peer.pc || (peer.pc.connectionState !== 'connected' && Date.now()-peer.started > 18000))) {
           await this.offer(seat, peer);
         }
       }
-    } catch { /* Game reconnects independently; keep mic state and retry. */ }
+    } catch (e) {
+      /* Game reconnects independently; keep mic state and retry. */
+      if (Date.now() - this.logErrAt > 30000) { this.logErrAt = Date.now(); this.log(`сигналы голоса: ошибка ${e instanceof Error ? e.message : String(e)}`); }
+    }
     finally { this.busy = false; this.paint(); }
   }
   private async receive(m: Signal) {
@@ -148,8 +204,9 @@ export class VoiceChat {
     if (m.kind === 'hello' || m.kind === 'offer') {
       if (!peer || peer.session !== m.session) {
         if (peer) this.close(peer);
-        peer = {session:m.session, mic:m.mic, seen:Date.now(), started:0, attempts:0, sent:false, ice:[]};
+        peer = {session:m.session, mic:m.mic, seen:Date.now(), started:0, attempts:0, sent:false, ice:[], lc:{}, rc:{}, checked:0, rx:-1, flow:false};
         this.peers.set(m.from, peer);
+        this.log(`место ${m.from + 1}: игрок в голосе (микрофон ${m.mic ? 'включён' : 'выключен'})`);
       }
       peer.seen = Date.now(); peer.mic = m.mic;
     }
@@ -158,6 +215,7 @@ export class VoiceChat {
       this.close(peer);
       peer.attempts++;
       peer.call = m.call;
+      if (peer.attempts <= 3 || peer.attempts % 10 === 0) this.log(`место ${m.from + 1}: получен offer, отвечаем (попытка ${peer.attempts})`);
       const pc = this.create(m.from, peer);
       await pc.setRemoteDescription(JSON.parse(m.payload!));
       const transceiver = pc.getTransceivers()[0];
@@ -169,13 +227,33 @@ export class VoiceChat {
       await this.flushICE(m.from, peer);
     } else if (m.call && m.call === peer.call && peer.pc) {
       if (m.kind === 'answer' && peer.pc.signalingState === 'have-local-offer') await peer.pc.setRemoteDescription(JSON.parse(m.payload!));
-      if (m.kind === 'ice') await peer.pc.addIceCandidate(JSON.parse(m.payload!));
+      if (m.kind === 'ice') {
+        const cand = JSON.parse(m.payload!) as RTCIceCandidateInit;
+        const type = candType(cand.candidate);
+        peer.rc[type] = (peer.rc[type] || 0) + 1;
+        try { await peer.pc.addIceCandidate(cand); } catch (e) { this.log(`место ${m.from + 1}: addIceCandidate: ${e instanceof Error ? e.message : String(e)}`); }
+      }
     }
   }
   private create(seat: number, peer: Remote) {
     const pc = new RTCPeerConnection({iceServers:this.servers});
-    peer.pc = pc; peer.started = Date.now(); peer.sent = false; peer.ice = [];
+    peer.pc = pc; peer.started = Date.now(); peer.sent = false; peer.ice = []; peer.lc = {}; peer.rc = {}; peer.rx = -1; peer.flow = false; peer.checked = Date.now();
+    const verbose = () => peer.attempts <= 3 || peer.attempts % 10 === 0;
+    let wasConnected = false;
+    const state = (what: string) => {
+      if (peer.pc !== pc || !verbose() && !wasConnected) return;
+      this.log(`место ${seat + 1}: ${what}: соединение=${pc.connectionState} ice=${pc.iceConnectionState} сбор=${pc.iceGatheringState} (${((Date.now() - peer.started) / 1000).toFixed(1)} с, попытка ${peer.attempts}); кандидаты свои ${fmtCount(peer.lc)}, чужие ${fmtCount(peer.rc)}`);
+    };
+    pc.oniceconnectionstatechange = () => state('ICE');
+    pc.onicegatheringstatechange = () => {
+      state('сбор кандидатов');
+      if (pc.iceGatheringState === 'complete' && peer.pc === pc && verbose() && !peer.lc.srflx && !peer.lc.relay) this.log(`место ${seat + 1}: нет кандидатов srflx — STUN не ответил или заблокирован`);
+    };
+    pc.onicecandidateerror = e => {
+      if (peer.pc === pc && verbose()) { const x = e as RTCPeerConnectionIceErrorEvent; this.log(`место ${seat + 1}: ошибка ICE ${x.errorCode} ${x.errorText || ''} ${x.url || ''}`); }
+    };
     pc.onicecandidate = e => {
+      if (e.candidate && peer.pc === pc) { const type = e.candidate.type || candType(e.candidate.candidate); peer.lc[type] = (peer.lc[type] || 0) + 1; }
       if (!e.candidate || peer.pc !== pc) return;
       if (peer.sent) void this.send('ice', seat, e.candidate.toJSON(), peer).catch(() => {});
       else peer.ice.push(e.candidate.toJSON());
@@ -189,14 +267,23 @@ export class VoiceChat {
       audio.dataset.voiceAudio = String(seat);
       peer.audio?.remove(); peer.audio = audio;
       document.body.append(audio);
-      void audio.play().catch(() => { audio.dataset.blocked = 'true'; this.paint(); });
+      if (verbose()) this.log(`место ${seat + 1}: получен аудиотрек`);
+      void audio.play().catch(() => { audio.dataset.blocked = 'true'; this.log(`место ${seat + 1}: воспроизведение заблокировано системой`); this.paint(); });
     };
-    pc.onconnectionstatechange = () => this.paint();
+    pc.onconnectionstatechange = () => {
+      this.paint();
+      const st = pc.connectionState;
+      if (st === 'connected') wasConnected = true;
+      if (peer.pc !== pc || !verbose() && !wasConnected) return;
+      state('связь');
+      if (st === 'connected' || st === 'failed' || st === 'disconnected') void this.pairInfo(pc).then(info => { if (peer.pc === pc) this.log(`место ${seat + 1}: ${st}: ${info.text}`); });
+    };
     return pc;
   }
   private async offer(seat: number, peer: Remote) {
     this.close(peer); peer.attempts++; peer.call = crypto.randomUUID();
     const pc = this.create(seat, peer);
+    if (peer.attempts <= 3 || peer.attempts % 10 === 0) this.log(`место ${seat + 1}: отправляем offer (попытка ${peer.attempts})`);
     peer.sender = pc.addTransceiver('audio', {direction:'sendrecv'}).sender;
     await peer.sender.replaceTrack(this.stream?.getAudioTracks()[0] || null);
     await pc.setLocalDescription(await pc.createOffer());
@@ -221,10 +308,12 @@ export class VoiceChat {
       const stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}, video:false});
       if (session !== this.session || !this.room || document.hidden) { stream.getTracks().forEach(t => t.stop()); return; }
       this.stream = stream;
+      this.log('микрофон включён');
       const track = stream.getAudioTracks()[0];
       track.onended = () => {
         if (this.stream?.getAudioTracks().includes(track)) {
           if (this.backgrounded) this.restoreMicrophone = true;
+          this.log('микрофон отключён системой');
           this.notify(t('web.voice.text017'));
           void this.mute();
         }
@@ -234,12 +323,14 @@ export class VoiceChat {
       this.heartbeat = Date.now();
       void this.tick();
     } catch (e) {
+      this.log(`микрофон: ошибка ${e instanceof Error ? e.name + ' ' + e.message : String(e)}`);
       await this.mute();
       this.notify(e instanceof DOMException && e.name === 'NotAllowedError' ? t("web.voice.text014") : `${t("web.voice.text013", {p0: e instanceof Error ? e.message : e})}`);
     } finally { this.micBusy = false; this.paint(); }
   }
   private async mute() {
     const stream = this.stream; this.stream = undefined;
+    if (stream) this.log('микрофон выключен');
     stream?.getTracks().forEach(t => t.stop());
     await Promise.all([...this.peers.values()].map(p => p.sender?.replaceTrack(null).catch(() => {})));
     this.paint();

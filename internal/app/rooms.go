@@ -119,6 +119,14 @@ func (a *App) roomRequest(q rooms.Request) (rooms.Response, error) {
 		enabled := config.AIEnabled
 		q.Platform, q.AIEnabled = runtime.GOOS, &enabled
 	}
+	if q.Op == "create" {
+		a.mu.Lock()
+		unsettled := a.lobbyUnsettled
+		a.mu.Unlock()
+		if unsettled {
+			return rooms.Response{}, locales.Errorf("go.rooms.lobby_unsettled")
+		}
+	}
 	a.mu.Lock()
 	q.Secret = a.rooms.config.Secret
 	u := a.rooms.url

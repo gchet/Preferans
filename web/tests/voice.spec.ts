@@ -89,6 +89,10 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     await expect(clients[0].page.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true',{timeout:15000});
     await expect(clients[0].page.locator('[data-voice-seat].offline')).toHaveCount(0,{timeout:30000});
     const host=clients[0].page;
+    // события голоса попадают в журнал приложения (состояние соединения, выбранная пара), без адресов игроков
+    const voiceLines=async()=>((await rpc(0,'status')).logs as string[]).filter(l=>l.includes('голос:')||l.includes('voice:'));
+    await expect.poll(async()=>(await voiceLines()).some(l=>/connected/.test(l)),{timeout:30000}).toBeTruthy();
+    expect((await voiceLines()).join('\n')).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
     const mutedAudio=()=>host.locator('[data-voice-audio]').evaluateAll(nodes=>nodes.map(n=>({seat:(n as HTMLElement).dataset.voiceAudio,muted:(n as HTMLAudioElement).muted})).sort((a,b)=>Number(a.seat)-Number(b.seat)));
     await expect(host.locator('[data-speaker]')).toHaveCount(3);
     await expect.poll(mutedAudio).toEqual([{seat:'1',muted:false},{seat:'2',muted:false}]);

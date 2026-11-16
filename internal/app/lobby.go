@@ -120,15 +120,22 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 	if len(ranked) == 0 {
 		ranked = []p2p.Announcement{self}
 	}
+	// skipped — лучший кандидат жив (его объявление свежее), но этому устройству недоступен: он может быть доступен
+	// другим игрокам, и тогда они выберут не того ведущего. Пока так, новые комнаты не создаются (см. lobbyUnsettled).
+	skipped := false
 	for _, winner := range ranked {
 		if winner.ID == self.ID {
 			a.lobbyLog(fmt.Sprintf("лобби: ведущий комнат — это устройство (живых кандидатов: %d)", len(cands)))
 			// Прежний ведущий мог создавать комнаты без нас: перед объявлением вливаем их каталог в свой.
+			unreachable := skipped
 			for _, an := range anns {
 				if an.ID != self.ID && time.Now().Unix()-an.At < int64((3*lobbyPeriod)/time.Second)+1 {
-					a.syncRooms(ctx, node, an.Invite())
+					if !a.syncRooms(ctx, node, an.Invite()) {
+						unreachable = true
+					}
 				}
 			}
+			a.setLobbyUnsettled(unreachable)
 			a.applyLobbyService("", "")
 			a.lobbyAnnounce(ctx, node, since)
 			a.syncOthers(node, ranked, self.ID)
@@ -138,6 +145,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 		synced := a.syncRooms(ctx, node, winner.Invite())
 		if !synced {
 			fails := a.lobbyFail(winner.ID)
+			skipped = true
 			a.mu.Lock()
 			current := a.lobbyHost == winner.ID
 			inRoom := a.rooms.config.Current != "" && a.rooms.config.Current != localRoomID
@@ -151,12 +159,33 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 			continue
 		}
 		a.lobbyOK(winner.ID)
+		a.setLobbyUnsettled(skipped)
 		a.saveHost(winner)
 		if code, err := p2p.Encode(p2p.Code{Kind: p2p.KindService, Invite: winner.Invite()}); err == nil {
 			a.applyLobbyService(code, winner.ID)
 		}
+		a.lobbyAnnounce(ctx, node, since) // не только ведущий: все живые устройства видны друг другу, выбор ведущего един
 		a.syncOthers(node, ranked, winner.ID)
 		return
+	}
+}
+
+// setLobbyUnsettled запоминает, что часть живых игроков этому устройству недоступна. Пока это так, создание комнаты
+// отклоняется: на разошедшихся сервисах появились бы две комнаты с одним названием. Повторный опрос — через 10 секунд.
+func (a *App) setLobbyUnsettled(v bool) {
+	a.mu.Lock()
+	changed := a.lobbyUnsettled != v
+	a.lobbyUnsettled = v
+	a.mu.Unlock()
+	if v {
+		a.lobbyRetry++
+	}
+	if changed {
+		if v {
+			a.lobbyLog("лобби: часть живых игроков недоступна, создание комнат приостановлено")
+		} else {
+			a.lobbyLog("лобби: все живые игроки доступны, создание комнат разрешено")
+		}
 	}
 }
 
