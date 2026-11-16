@@ -51,6 +51,7 @@ func (l *Link) send(v any) error {
 	return errNoPeer
 }
 func (l *Link) close() {
+	l.stopAudio()
 	if c := l.peer(); c != nil {
 		c.Close()
 	}

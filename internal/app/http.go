@@ -22,6 +22,7 @@ type Request struct {
 	ElementID  string       `json:"elementID,omitempty"`
 	Voice      VoiceMessage `json:"voice"`
 	After      uint64       `json:"after"`
+	Audio      AudioBatch   `json:"audio"`
 	Action     string       `json:"action"`
 	Players    int          `json:"players"`
 	Target     int          `json:"target"`
@@ -85,6 +86,10 @@ func (a *App) RPC(r Request) (any, error) {
 	case "voice-log":
 		a.LogVoice(r.Message)
 		return nil, nil
+	case "audio-send":
+		return nil, a.SendAudio(r.Audio)
+	case "audio-poll":
+		return a.PollAudio(r.After)
 	case "voice-send":
 		return nil, a.SendVoice(r.Voice)
 	case "voice-poll":

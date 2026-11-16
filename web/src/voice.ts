@@ -1,4 +1,5 @@
 import {t} from './i18n';
+import {RelayAudio, relaySupported} from './voice-relay';
 type RPC = <T = unknown>(action: string, params?: Record<string, unknown>) => Promise<T>;
 interface Room { id: string; seat: number; players: {bot: boolean; id?:string}[] }
 interface Signal {
@@ -11,7 +12,10 @@ interface Remote {
   started: number; attempts: number; sent: boolean; ice: RTCIceCandidateInit[];
   // Диагностика для журнала: счётчики кандидатов по типам (адреса не сохраняются) и признак потока аудио.
   lc: Record<string, number>; rc: Record<string, number>; checked: number; rx: number; flow: boolean;
+  // Запасной путь: звук этого игрока идёт по игровому каналу через стол, пока WebRTC не поднялся.
+  viaRelay: boolean; noConn: number;
 }
+export type VoicePath = 'auto' | 'webrtc' | 'table';
 const candType = (c?: string) => / typ (\w+)/.exec(c || '')?.[1] || '?';
 const fmtCount = (c: Record<string, number>) => Object.entries(c).map(([k, v]) => `${k}:${v}`).join(',') || '-';
 const micSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/><path class="mic-slash" d="M3 3l18 18"/></svg>';
@@ -42,6 +46,12 @@ export class VoiceChat {
   private backgrounded = false;
   private outbound: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setInterval>;
+  private relayTimer: ReturnType<typeof setInterval>;
+  private relay: RelayAudio;
+  private pathMode: VoicePath = 'auto';
+  private relayAfter = 0;
+  private relayRunning = false;
+  private relayLogAt = 0;
   private logBuf: string[] = [];
   private logTimer = 0;
   private logErrAt = 0;
@@ -95,7 +105,13 @@ export class VoiceChat {
           this.resumeMic = {roomId:value.roomId, seat:value.seat};
       }
     } catch { /* Session storage may be unavailable in restricted WebViews. */ }
+    this.relay = new RelayAudio(rpc, message => this.log(message));
+    try {
+      const mode = localStorage.getItem('preferans-voice-path');
+      if (mode === 'webrtc' || mode === 'table') this.pathMode = mode;
+    } catch { /* Хранилище может быть недоступно: остаётся автоматический выбор. */ }
     this.timer = setInterval(() => void this.tick(), 100);
+    this.relayTimer = setInterval(() => this.relayTick(), 250);
     window.addEventListener('pagehide', () => this.flushLog());
     document.addEventListener('click', e => {
       const speaker=(e.target as Element).closest<HTMLButtonElement>('[data-speaker]');
@@ -126,7 +142,54 @@ export class VoiceChat {
       this.restoreMicrophone = false;
       void this.mute();
     });
-    window.addEventListener('pagehide', () => { this.stop(); clearInterval(this.timer); });
+    window.addEventListener('pagehide', () => { this.stop(); clearInterval(this.timer); clearInterval(this.relayTimer); });
+  }
+  get path(): VoicePath { return this.pathMode; }
+  // Как идёт голос: автоматически (WebRTC, а для не соединившейся пары — через стол), только WebRTC или только через стол.
+  setPath(mode: VoicePath) {
+    if (mode === this.pathMode) return;
+    this.pathMode = mode;
+    try { localStorage.setItem('preferans-voice-path', mode); } catch { /* значение действует до перезагрузки */ }
+    this.log(`способ передачи голоса: ${mode === 'auto' ? 'автоматически' : mode === 'webrtc' ? 'только WebRTC' : 'только через стол'}${mode === 'table' && !relaySupported() ? ' (WebCodecs недоступен, остаётся WebRTC)' : ''}`);
+    for (const peer of this.peers.values()) {
+      peer.noConn = 0;
+      if (this.tableOnly) this.close(peer);
+    }
+    this.paint();
+  }
+  private get tableOnly() { return this.pathMode === 'table' && relaySupported(); }
+  private relayTick() {
+    const via = [...this.peers].filter(([, p]) => p.viaRelay).map(([seat]) => seat);
+    if (!this.room || !via.length) {
+      this.relay.stopCapture();
+      this.relay.prune(new Set());
+      return;
+    }
+    this.relay.ensure();
+    this.relay.prune(new Set(via));
+    if (this.stream && !this.relay.capturing) this.relay.startCapture(this.stream);
+    else if (!this.stream && this.relay.capturing) this.relay.stopCapture();
+    if (!this.relayRunning) void this.relayLoop(this.session);
+    if (Date.now() - this.relayLogAt > 20000) {
+      if (this.relayLogAt) { const s = this.relay.stats; this.log(`звук через стол: пачек отправлено ${s.sent}, принято ${s.received}, отброшено ${s.dropped}; звук ${this.relay.running ? 'разрешён' : 'ждёт нажатия на экран'}`); s.sent = s.received = s.dropped = 0; }
+      this.relayLogAt = Date.now();
+    }
+  }
+  private async relayLoop(session: string) {
+    this.relayRunning = true;
+    try {
+      while (this.room && session === this.session && [...this.peers.values()].some(p => p.viaRelay)) {
+        let res: {events: {seq: number; batch: {from: number; frames: string[]}}[]; last: number};
+        try { res = await this.rpc('audio-poll', {after: this.relayAfter}); }
+        catch { await new Promise(r => setTimeout(r, 500)); continue; }
+        if (session !== this.session) return;
+        for (const ev of res.events) {
+          const peer = this.peers.get(ev.batch.from);
+          if (peer?.viaRelay) this.relay.play(ev.batch.from, ev.batch.frames);
+        }
+        this.relayAfter = res.last;
+      }
+    } finally { this.relayRunning = false; }
   }
   sync(status: {view: Room | null; connected: boolean[]}) {
     const room = status.view;
@@ -136,6 +199,7 @@ export class VoiceChat {
       this.room = room;
       this.session = crypto.randomUUID();
       this.after = 0;
+      this.relayAfter = 0;
       this.heartbeat = 0;
     }
     this.room = room;
@@ -186,7 +250,14 @@ export class VoiceChat {
       for (const [seat, peer] of this.peers) {
         if (Date.now()-peer.seen > 12000) { this.log(`место ${seat + 1}: нет приветствий 12 с, голос закрыт`); this.close(peer); this.peers.delete(seat); continue; }
         if (peer.pc?.connectionState === 'connected' && Date.now() - peer.checked > 20000) { peer.checked = Date.now(); void this.checkFlow(seat, peer); }
-        if (this.room && this.room.seat < seat && (!peer.pc || (peer.pc.connectionState !== 'connected' && Date.now()-peer.started > 18000))) {
+        const up = peer.pc?.connectionState === 'connected';
+        if (up) peer.noConn = 0; else if (!peer.noConn) peer.noConn = Date.now();
+        const via = this.tableOnly || this.pathMode === 'auto' && peer.noConn > 0 && Date.now() - peer.noConn > 25000 && relaySupported();
+        if (via !== peer.viaRelay) {
+          peer.viaRelay = via;
+          this.log(via ? `место ${seat + 1}: голос через стол (${this.tableOnly ? 'выбрано в настройках' : `WebRTC не поднялся за ${Math.round((Date.now() - peer.noConn) / 1000)} с`})` : `место ${seat + 1}: голос снова по WebRTC`);
+        }
+        if (!this.tableOnly && this.room && this.room.seat < seat && (!peer.pc || (peer.pc.connectionState !== 'connected' && Date.now()-peer.started > 18000))) {
           await this.offer(seat, peer);
         }
       }
@@ -204,14 +275,14 @@ export class VoiceChat {
     if (m.kind === 'hello' || m.kind === 'offer') {
       if (!peer || peer.session !== m.session) {
         if (peer) this.close(peer);
-        peer = {session:m.session, mic:m.mic, seen:Date.now(), started:0, attempts:0, sent:false, ice:[], lc:{}, rc:{}, checked:0, rx:-1, flow:false};
+        peer = {session:m.session, mic:m.mic, seen:Date.now(), started:0, attempts:0, sent:false, ice:[], lc:{}, rc:{}, checked:0, rx:-1, flow:false, viaRelay:false, noConn:0};
         this.peers.set(m.from, peer);
         this.log(`место ${m.from + 1}: игрок в голосе (микрофон ${m.mic ? 'включён' : 'выключен'})`);
       }
       peer.seen = Date.now(); peer.mic = m.mic;
     }
     if (!peer || peer.session !== m.session) return;
-    if (m.kind === 'offer' && this.room.seat > m.from) {
+    if (m.kind === 'offer' && this.room.seat > m.from && !this.tableOnly) {
       this.close(peer);
       peer.attempts++;
       peer.call = m.call;
@@ -295,6 +366,7 @@ export class VoiceChat {
     for (const ice of peer.ice.splice(0)) await this.send('ice', seat, ice, peer);
   }
   private playAudio() {
+    this.relay.resume();
     for (const peer of this.peers.values()) if (peer.audio) void peer.audio.play().then(() => { delete peer.audio!.dataset.blocked; }).catch(() => {});
   }
   private async toggle() {
@@ -332,6 +404,7 @@ export class VoiceChat {
     const stream = this.stream; this.stream = undefined;
     if (stream) this.log('микрофон выключен');
     stream?.getTracks().forEach(t => t.stop());
+    this.relay.stopCapture();
     await Promise.all([...this.peers.values()].map(p => p.sender?.replaceTrack(null).catch(() => {})));
     this.paint();
     if (stream && this.room) await this.send('hello').catch(() => {});
@@ -344,10 +417,15 @@ export class VoiceChat {
     this.stream?.getTracks().forEach(t => t.stop()); this.stream = undefined;
     this.restoreMicrophone = false; this.backgrounded = false;
     for (const peer of this.peers.values()) this.close(peer);
+    this.relay.stopAll();
     this.peers.clear(); this.room = null;
   }
   private paint() {
-    for(const [seat,peer] of this.peers)if(peer.audio)peer.audio.muted=!this.soundEnabled || this.mutedPlayers.has(this.speakerKey(seat));
+    for(const [seat,peer] of this.peers){
+      const audible=this.soundEnabled && !this.mutedPlayers.has(this.speakerKey(seat));
+      if(peer.audio)peer.audio.muted=!audible;
+      this.relay.setAudible(seat,audible);
+    }
     for(const el of document.querySelectorAll<HTMLButtonElement>('[data-speaker]')){
       const own=el.dataset.speaker==='all';
       const on=own?this.soundEnabled:!this.mutedPlayers.has(this.speakerKey(Number(el.dataset.speaker)));
@@ -361,8 +439,8 @@ export class VoiceChat {
       const own = el.hasAttribute('data-microphone');
       const peer = this.peers.get(Number(el.dataset.voiceSeat));
       const on = own ? !!this.stream : !!peer?.mic;
-      const ready = own || peer?.pc?.connectionState === 'connected';
-      const blocked = !own && !!peer?.audio?.dataset.blocked;
+      const ready = own || peer?.pc?.connectionState === 'connected' || !!peer?.viaRelay;
+      const blocked = !own && (!!peer?.audio?.dataset.blocked || !!peer?.viaRelay && this.relay.exists && !this.relay.running);
       const label = own ? (this.micBusy ? t("web.voice.text007") : on ? t("web.voice.text006") : t("web.voice.text005"))
         : blocked ? t("web.voice.text004") : !ready ? t("web.voice.text003") : on ? t("web.voice.text002") : t("web.voice.text001");
       el.classList.toggle('muted', !on); el.classList.toggle('offline', !ready); el.classList.toggle('audio-blocked', blocked);

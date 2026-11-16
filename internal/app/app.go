@@ -39,6 +39,7 @@ type Packet struct {
 	Ack               string         `json:"ack,omitempty"`
 	Name              string         `json:"name,omitempty"`
 	Voice             *VoiceMessage  `json:"voice,omitempty"`
+	Audio             *AudioBatch    `json:"audio,omitempty"`
 	Payload           string         `json:"payload,omitempty"`
 	Type              string         `json:"type"`
 	Key               string         `json:"key,omitempty"`
@@ -55,6 +56,7 @@ type Link struct {
 	AuthDeadline time.Time
 	Peer         *p2p.Conn
 	pmu          sync.Mutex
+	audioQ       chan Packet // очередь кадров голоса к этому месту (под pmu)
 	Nonce        string
 	Auth         bool
 	Accepted     bool
@@ -70,6 +72,8 @@ type App struct {
 	roomControl       sync.Mutex
 	voiceQueue        []VoiceEvent
 	voiceSeq          uint64
+	audioQueue        []AudioEvent
+	audioSeq          uint64
 	diagnostic        bool
 	mu                sync.Mutex
 	store             storage.Store
@@ -282,6 +286,7 @@ func (a *App) SetLogEnabled(enabled bool) error {
 func (a *App) disconnectLocked() {
 	a.cancelAILocked()
 	a.voiceQueue = nil
+	a.audioQueue = nil
 	for _, l := range a.peers {
 		go l.close()
 	}
@@ -716,6 +721,12 @@ func (a *App) receiveHost(seat int, l *Link, b []byte) {
 		p.Voice.From = seat
 		_ = a.routeVoiceLocked(*p.Voice)
 	}
+	if p.Type == "audio" && p.Audio != nil && l.Auth && seat < len(a.connected) && a.connected[seat] {
+		p.Audio.From = seat
+		if a.validAudioLocked(*p.Audio) {
+			a.routeAudioLocked(*p.Audio)
+		}
+	}
 	if l.Auth {
 		a.receiveHeartbeatLocked(l, p)
 	}
@@ -743,6 +754,9 @@ func (a *App) receiveClient(l *Link, b []byte) {
 	}
 	if p.Type == "voice" && p.Voice != nil && a.validVoiceLocked(*p.Voice) && (p.Voice.To == -1 || p.Voice.To == a.saved.Seat) && p.Voice.From != a.saved.Seat {
 		a.queueVoiceLocked(*p.Voice)
+	}
+	if p.Type == "audio" && p.Audio != nil && p.Audio.From != a.saved.Seat && a.validAudioLocked(*p.Audio) {
+		a.queueAudioLocked(*p.Audio)
 	}
 	if p.Error != "" {
 		a.lastError = p.Error
