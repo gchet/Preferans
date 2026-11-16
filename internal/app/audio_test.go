@@ -55,10 +55,17 @@ func TestAudioRelaysThroughHost(t *testing.T) {
 	for name, a := range map[string]*App{"one": one, "two": two} {
 		a := a
 		var got AudioPoll
-		eventually(t, func() bool { got, _ = a.PollAudio(0); return len(got.Events) > 0 })
-		if got.Events[len(got.Events)-1].Batch.From != 0 {
-			t.Fatalf("%s: источник должен быть ведущим: %+v", name, got)
-		}
+		// у гостя уже может лежать пачка другого гостя: ждём именно пачку ведущего
+		eventually(t, func() bool {
+			got, _ = a.PollAudio(0)
+			for _, e := range got.Events {
+				if e.Batch.From == 0 && len(e.Batch.Frames) == 2 && e.Batch.Frames[0][0] == 9 {
+					return true
+				}
+			}
+			return false
+		})
+		_ = name
 	}
 	if got, _ := host.PollAudio(0); len(got.Events) != 1 {
 		t.Fatal("ведущий получил собственный звук")
