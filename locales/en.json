@@ -593,6 +593,7 @@
   "android.update.failed": "Could not download update: {p0}",
   "android.code.save_failed": "Could not save code",
   "web.rooms.restore_missing": "Your table is still in the room service, but its game is not restored on this device. You can close the table and free the room. The history is kept.",
+  "web.rooms.gathering": "Gathering players in the room… Creating or restoring a table is paused until this finishes.",
   "web.rooms.close_table": "Close table",
   "web.rules.finish_after_pass_exit": "Finish the pool only after all-pass ends",
   "web.history.totals": "Room player totals",

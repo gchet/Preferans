@@ -116,6 +116,11 @@ type App struct {
 	lobbyRetry       int       // сколько опросов подряд лобби повторяется вне расписания (только горутина лобби)
 	lobbyFails       map[string]int // подряд неудачных обменов каталогами с кандидатом в ведущие (только горутина лобби)
 	lobbyUnsettled   bool           // под a.mu: часть живых кандидатов недоступна этому устройству, создавать комнаты нельзя
+	lobbyEnabled     bool           // под a.mu: публичное лобби включено
+	lobbyStart       time.Time      // под a.mu: когда включено лобби (запуск приложения)
+	lobbyReady       bool           // под a.mu: лобби определило ведущего после запуска или смены сети
+	lobbyGatherSince time.Time      // под a.mu: с какого момента идёт сбор игроков (для предела ожидания)
+	lobbyBlockedTill time.Time      // только горутина лобби: до этого момента объявления не публикуются (ntfy ответил 429)
 	lobbySyncing     atomic.Bool    // идёт фоновый обмен каталогами с остальными кандидатами
 	appearance        Appearance
 	closed            chan struct{}
@@ -135,6 +140,7 @@ type Status struct {
 	RoomSelf          string         `json:"roomSelf"`
 	RoomError         string         `json:"roomError"`
 	RoomOnline        bool           `json:"roomOnline"`
+	RoomGathering      bool           `json:"roomGathering"`
 	FreeSeats         int            `json:"freeSeats"`
 	Current           bool           `json:"current"`
 	View              *game.View     `json:"view"`
@@ -336,6 +342,7 @@ func (a *App) statusLocked() Status {
 	s.RoomSelf = a.rooms.identity()
 	s.Room = cloneRoom(a.rooms.room)
 	s.RoomError = a.rooms.err
+	s.RoomGathering = a.gatheringLocked()
 	s.RoomOnline = time.Since(a.rooms.seen) < time.Duration(config.Interface.RoomOnlineTimeoutMs)*time.Millisecond
 	if s.RoomLocal {
 		s.RoomOnline = true

@@ -15,6 +15,51 @@ import (
 // lobbyPeriod — период опроса и объявления в публичном лобби.
 var lobbyPeriod = 60 * time.Second
 
+// Объявления идут через публичный ntfy.sh, у которого есть суточный лимит сообщений на IP-адрес (HTTP 429). Устройства
+// одной семьи сидят за одним адресом, поэтому объявляемся редко: раз в 5 периодов (и сразу при смене адресов relay).
+// Живость ведущего при этом проверяет не свежесть объявления, а попытка обмена каталогами (см. lobbyFail).
+func lobbyAnnounceEvery() time.Duration { return 5 * lobbyPeriod }
+
+// lobbyAlive — как долго объявление считается живым при выборе ведущего.
+func lobbyAlive() time.Duration { return 12 * lobbyPeriod }
+
+// lobbyBlocking — объявление моложе этого срока и недоступное устройству считается живым игроком, которого мы не достаём
+// (до выяснения комнаты не создаются).
+func lobbyBlocking() time.Duration { return 6 * lobbyPeriod }
+
+// lobbyReadWindow — глубина чтения темы лобби.
+func lobbyReadWindow() time.Duration { return lobbyAlive() + lobbyPeriod }
+
+// lobbyBlockPause — пауза в объявлениях после ответа ntfy 429 (лимит сообщений исчерпан).
+const lobbyBlockPause = 5 * time.Minute
+
+// lobbyGatherLimit — дольше этого срока после запуска «сбор игроков» не показывается, даже если лобби так и не определилось
+// (например, ntfy недоступен): тогда комната работает на своём сервисе, как раньше.
+const lobbyGatherLimit = 40 * time.Second
+
+// gatheringLocked: идёт ли сбор игроков в комнате — лобби ещё не определило общий сервис комнат либо часть живых игроков
+// пока недоступна. Пока так, создавать и восстанавливать стол нельзя: стол попал бы на сервис, которого другие не видят.
+func (a *App) gatheringLocked() bool {
+	cur := a.rooms.config.Current
+	if !a.lobbyEnabled || a.appearance.RoomServiceURL != "" || cur == "" || cur == localRoomID {
+		return false
+	}
+	if a.lobbyUnsettled {
+		return true
+	}
+	return !a.lobbyReady && time.Since(a.lobbyGatherSince) < lobbyGatherLimit
+}
+
+func (a *App) setLobbyReady() {
+	a.mu.Lock()
+	changed := !a.lobbyReady
+	a.lobbyReady = true
+	a.mu.Unlock()
+	if changed {
+		a.lobbyLog("лобби: сбор игроков завершён")
+	}
+}
+
 // EnableLobby включает публичное лобби: игроки ничего не вводят. Устройство читает общую тему ntfy,
 // выбирает ведущего (самая старая установка среди живых) и пользуется его сервисом комнат.
 // Если самая старая установка — это устройство, оно само объявляет свой сервис. Вызывается только
@@ -24,6 +69,9 @@ func (a *App) EnableLobby() {
 		if os.Getenv("PREFERANS_ROOMS_URL") != "" {
 			return // служебный HTTP-сервер для разработки: лобби не нужно
 		}
+		a.mu.Lock()
+		a.lobbyEnabled, a.lobbyGatherSince, a.lobbyStart = true, time.Now(), time.Now()
+		a.mu.Unlock()
 		go a.lobbyLoop()
 	})
 }
@@ -80,7 +128,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	anns, err := p2p.ReadLobby(ctx, 4*lobbyPeriod)
+	anns, err := p2p.ReadLobby(ctx, lobbyReadWindow())
 	if err != nil {
 		a.lobbyLog(fmt.Sprintf("лобби: объявления не прочитаны: %v", err))
 		anns = nil
@@ -91,7 +139,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 	for _, an := range anns {
 		if an.ID != self.ID {
 			cands = append(cands, an)
-			fresh = fresh || time.Now().Unix()-an.At < int64((3*lobbyPeriod)/time.Second)
+			fresh = fresh || time.Now().Unix()-an.At < int64(lobbyAlive()/time.Second)
 		}
 	}
 	// Лобби недоступно (ntfy не отвечает): пробуем ведущего, которого запомнили при прошлой удачной встрече.
@@ -116,7 +164,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 	// Кандидаты по приоритету: сначала настольные устройства, затем самая старая установка. Если лучший ведущий
 	// недоступен именно этому устройству, берём следующего: иначе устройство осталось бы с мёртвым сервисом комнат
 	// (так, в партии 14.11 телефон-ведущий уснул, а игроки разошлись по разным сервисам).
-	ranked := p2p.RankHosts(cands, time.Now(), 3*lobbyPeriod)
+	ranked := p2p.RankHosts(cands, time.Now(), lobbyAlive())
 	if len(ranked) == 0 {
 		ranked = []p2p.Announcement{self}
 	}
@@ -129,13 +177,14 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 			// Прежний ведущий мог создавать комнаты без нас: перед объявлением вливаем их каталог в свой.
 			unreachable := skipped
 			for _, an := range anns {
-				if an.ID != self.ID && time.Now().Unix()-an.At < int64((3*lobbyPeriod)/time.Second)+1 {
+				if an.ID != self.ID && time.Now().Unix()-an.At < int64(lobbyBlocking()/time.Second)+1 {
 					if !a.syncRooms(ctx, node, an.Invite()) {
 						unreachable = true
 					}
 				}
 			}
 			a.setLobbyUnsettled(unreachable)
+			a.setLobbyReady()
 			a.applyLobbyService("", "")
 			a.lobbyAnnounce(ctx, node, since)
 			a.syncOthers(node, ranked, self.ID)
@@ -160,6 +209,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 		}
 		a.lobbyOK(winner.ID)
 		a.setLobbyUnsettled(skipped)
+		a.setLobbyReady()
 		a.saveHost(winner)
 		if code, err := p2p.Encode(p2p.Code{Kind: p2p.KindService, Invite: winner.Invite()}); err == nil {
 			a.applyLobbyService(code, winner.ID)
@@ -241,13 +291,21 @@ func (a *App) lobbyLog(note string) {
 
 // lobbyAnnounce публикует объявление не чаще периода лобби. Пока у узла нет адресов relay, повторяет на следующем опросе.
 func (a *App) lobbyAnnounce(ctx context.Context, node *p2p.Node, since int64) {
+	if time.Now().Before(a.lobbyBlockedTill) {
+		return // ntfy ответил 429: не усугубляем, повторим после паузы
+	}
 	addrs := strings.Join(node.AnnounceAddrs(), ",")
 	// Адреса relay сменились (после потери сети резервирование новое): ведущий объявляется сразу, иначе остальные
 	// ещё целый период ищут его по устаревшим адресам.
-	if addrs == a.lobbyAddrs && time.Since(a.lobbyAnnounced) < lobbyPeriod-time.Second {
+	if addrs == a.lobbyAddrs && time.Since(a.lobbyAnnounced) < lobbyAnnounceEvery()-time.Second {
 		return
 	}
 	if err := node.Announce(ctx, since); err != nil {
+		if strings.Contains(err.Error(), "HTTP 429") {
+			a.lobbyBlockedTill = time.Now().Add(lobbyBlockPause)
+			a.lobbyLog("лобби: ntfy ограничил число сообщений (HTTP 429), объявления приостановлены на 5 минут")
+			return
+		}
 		a.lobbyLog(fmt.Sprintf("лобби: объявление не отправлено: %v", err))
 		a.lobbyRetry++ // повторяем опрос вне расписания, пока не появятся адреса relay
 		return
@@ -327,7 +385,10 @@ func (a *App) applyLobbyService(url, hostID string) {
 	}
 	same := a.lobbyHost == hostID
 	// Игрок в комнате переходит вместе с комнатой (каталоги уже обменяны); идущий стол не прерываем.
-	busy := a.saved.Table != ""
+	// Завершённый стол (результат на экране) и стол без единого соединения — «хвосты» прошлой партии: они не должны
+	// держать игрока на сервисе, которого другие игроки не видят (так 17.11 игрок оказался в комнате один).
+	// Стол без соединений отпускаем только в первые две минуты после запуска (стол прошлого вечера, восстановленный при старте).
+	busy := a.saved.Table != "" && !savedFinished(a.saved) && (len(a.peers) > 0 || time.Since(a.lobbyStart) >= 2*time.Minute)
 	if busy && !same {
 		return
 	}
@@ -339,6 +400,8 @@ func (a *App) applyLobbyService(url, hostID string) {
 		a.rooms.generation++
 		a.rooms.offer = nil
 		a.rooms.err = ""
+		a.rooms.failures, a.rooms.retryAt = 0, time.Time{}
+		go a.roomTick() // сразу заново войти в комнату на новом сервисе, не ждать следующего опроса
 	}
 }
 
@@ -349,6 +412,9 @@ func (a *App) NetworkChanged() {
 	a.mu.Lock()
 	node := a.node
 	a.rooms.failures, a.rooms.retryAt = 0, time.Time{} // сеть изменилась: опрос комнаты без паузы
+	if a.lobbyEnabled {
+		a.lobbyReady, a.lobbyGatherSince = false, time.Now() // после смены сети сервис комнат определяется заново
+	}
 	a.mu.Unlock()
 	if node == nil {
 		return
