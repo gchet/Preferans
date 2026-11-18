@@ -25,6 +25,29 @@ interface ScoreView {
   mountain: number[];
   whists: number[][];
   results: number[];
+  history?: { pool?: number[]; mountain?: number[] }[];
+}
+// Running total after every entry, as players write the pool by hand: 2.10.20.
+// A long record keeps its beginning, then "..", then the last two entries: 2.4.10.12..22.24.
+export function runningTally(v: ScoreView, key: "pool" | "mountain", seat: number, maxChars: number): string {
+  const total = v[key][seat] || 0;
+  const entries: number[] = [];
+  let sum = 0;
+  for (const ledger of v.history || []) {
+    const x = ledger[key]?.[seat] || 0;
+    if (x !== 0) { sum += x; entries.push(sum); }
+  }
+  // Without a matching history (old saves) the plain total is the only honest value.
+  if (entries.length < 2 || sum !== total) return String(total);
+  const full = entries.join(".");
+  if (full.length <= maxChars || entries.length <= 3) return full;
+  const tail = entries.slice(-2).join(".");
+  let head = 1;
+  for (let i = 2; i <= entries.length - 2; i++) {
+    if (`${entries.slice(0, i).join(".")}..${tail}`.length > maxChars) break;
+    head = i;
+  }
+  return `${entries.slice(0, head).join(".")}..${tail}`;
 }
 export function remainingMinutes(v: ScoreView): number {
   if (v.stage === 'finished') return 0;
@@ -47,7 +70,7 @@ export function poolDrawing(v: ScoreView, esc: (s: unknown) => string): string {
         return `${divider}<text x="${x}" y="449" class="pool-whists"><title>${t("web.table_art.text006", {p2: esc(v.players[seat].name), p3: esc(v.players[s].name)})}</title>${v.whists[seat]?.[s] || 0}</text>`;
       }).join("");
       const result = (totals[seat] || 0).toLocaleString(locale);
-      return `<g transform="rotate(${a} 240 240)"><text x="240" y="307" class="pool-balance"><title>${t("web.table_art.text005", {p1: esc(v.players[seat].name)})}</title>${result}</text><text x="240" y="338" class="pool-name">${esc(v.players[seat].name)}</text><text x="240" y="369" class="pool-mountain"><title>${t("web.main.text049")}</title>${v.mountain[seat] || 0}</text><text x="240" y="410" class="pool-points"><title>${t("web.main.text006")}</title>${v.pool[seat] || 0}</text>${whists}</g>`;
+      return `<g transform="rotate(${a} 240 240)"><text x="240" y="307" class="pool-balance"><title>${t("web.table_art.text005", {p1: esc(v.players[seat].name)})}</title>${result}</text><text x="240" y="338" class="pool-name">${esc(v.players[seat].name)}</text><text x="240" y="369" class="pool-mountain"><title>${t("web.main.text049")}</title>${runningTally(v, "mountain", seat, 15)}</text><text x="240" y="410" class="pool-points"><title>${t("web.main.text006")}</title>${runningTally(v, "pool", seat, 21)}</text>${whists}</g>`;
     })
     .join("");
   return `<button class="pool-drawing" data-panel="score" aria-label="${t("web.table_art.text004")}"><svg viewBox="0 0 480 480" role="img" aria-label="${v.rules?.endCondition === 'time' ? t("web.table_art.text001") : `${t("web.rules.text001", {p0: v.target})}`}"><rect x="18" y="18" width="444" height="444" rx="22"/><rect x="57" y="57" width="366" height="366" rx="18"/><rect x="99" y="99" width="282" height="282" rx="12"/><path d="M240 240L18 462M240 240L462 462${n === 3 ? "M240 240V18" : "M240 240L18 18M240 240L462 18"}"/>${sectors}<circle cx="240" cy="240" r="43" class="pool-target"/><text x="240" y="233" class="pool-total">${v.rules?.endCondition === 'time' ? remainingMinutes(v) : v.target}</text><text x="240" y="253" class="pool-name">${v.rules?.endCondition === 'time' ? t("web.table_art.text003") : t("web.table_art.text002")}</text></svg></button>`;

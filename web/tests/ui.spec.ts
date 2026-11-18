@@ -2323,3 +2323,29 @@ test('update: automatic update setting is on by default, can be switched off and
   await page.locator('#settings-form button.primary').click();
   await expect.poll(() => saved?.autoUpdate).toBe(true);
 });
+test('pool and mountain show a running tally like a handwritten score sheet', async ({page}) => {
+  await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
+  await page.goto(url);
+  await page.getByLabel('Боты для отладки').check();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
+  await expect(page.locator('.hand .card')).toHaveCount(10);
+  const entry = (pool: number[], mountain: number[]) => ({round:1,label:'x',pool,mountain,whists:[[0,0,0],[0,0,0],[0,0,0]]});
+  await page.route('**/api', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    if (route.request().postDataJSON().action === 'status') {
+      const v = body.data.view;
+      Object.assign(v,{revision:1001,pool:[20,2,0],mountain:[0,0,0],whists:[[0,0,0],[0,0,0],[0,0,0]],results:[0,0,0],
+        history:[entry([2,0,0],[0,0,0]),entry([8,2,0],[0,0,0]),entry([10,0,0],[0,0,0])]});
+      v.history.push(...[2,4,6,8,10,12,14,16].map(x => entry([0,0,0],[x,0,0])));
+      v.mountain = [72,0,0];
+    }
+    await route.fulfill({response,json:body});
+  });
+  await page.reload();
+  await expect(page.locator('.pool-points').first()).toHaveText(/2\.10\.20$/);
+  await expect(page.locator('.pool-points').nth(1)).toHaveText(/2$/);
+  await expect(page.locator('.pool-mountain').first()).toHaveText(/2\.6\.12\.\.56\.72$/);
+});
