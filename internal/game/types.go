@@ -291,6 +291,10 @@ func (s *State) Actor() int {
 	if s.Stage == "play" && s.Open && s.Controller >= 0 && s.Turn != s.Declarer {
 		return s.Controller
 	}
+	// Closed dealer whist: a bot defender whose hand the dealer inspected and whisted on is played by the dealer.
+	if s.Stage == "play" && s.DealerWhist && s.Controller >= 0 && s.DealerLook != nil && s.Turn == *s.DealerLook && s.Turn != s.Declarer && s.Players[s.Turn].Bot {
+		return s.Controller
+	}
 	return s.Turn
 }
 func sortHand(h []Card) { sort.Slice(h, func(i, j int) bool { return h[i] < h[j] }) }

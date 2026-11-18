@@ -45,8 +45,13 @@ func TestWithoutThreeBeforeDiscard(t *testing.T) {
 				if next.Pool[i] != 0 {
 					t.Fatal("pool awarded")
 				}
-				for _, w := range next.Whists[i] {
-					if w != 0 {
+				for j, w := range next.Whists[i] {
+					// Four players: the talon is thrown in the dealer's face, so the declarer is credited against him.
+					want := 0
+					if n == 4 && i == d && j == next.Dealer && d != next.Dealer {
+						want = 8 * (level - 5)
+					}
+					if w != want {
 						t.Fatal("whists awarded")
 					}
 				}
@@ -56,5 +61,37 @@ func TestWithoutThreeBeforeDiscard(t *testing.T) {
 				t.Fatal("duplicate surrender")
 			}
 		}
+	}
+}
+
+// Four players: leaving without three throws the talon in the dealer's face automatically.
+func TestWithoutThreeThrowsTalonInDealersFace(t *testing.T) {
+	for _, mode := range []string{"whists", "mountain"} {
+		for _, level := range []int{6, 7} {
+			r := DefaultRules()
+			r.TalonPenalty = mode
+			s := auctionWinner(t, 4, r, Contract{Level: level, Suit: 1})
+			if s.Declarer == s.Dealer {
+				continue
+			}
+			declarer, dealer := s.Declarer, s.Dealer
+			s = step(t, s, s.Actor(), "without-three", nil)
+			l := s.History[len(s.History)-1]
+			if !s.TalonShown {
+				t.Fatalf("%s %d: talon not thrown", mode, level)
+			}
+			penalty := 4 * (level - 5)
+			if mode == "whists" && l.Whists[declarer][dealer] != 2*penalty || mode == "mountain" && l.Mountain[dealer] != penalty {
+				t.Fatalf("%s %d: ledger %+v", mode, level, l)
+			}
+			if l.Mountain[declarer] != 3*penalty {
+				t.Fatalf("%s %d: declarer mountain %v", mode, level, l.Mountain)
+			}
+		}
+	}
+	s := auctionWinner(t, 3, DefaultRules(), Contract{Level: 6, Suit: 1})
+	s = step(t, s, s.Actor(), "without-three", nil)
+	if s.TalonShown {
+		t.Fatal("three players have no talon penalty")
 	}
 }

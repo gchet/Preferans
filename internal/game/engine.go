@@ -236,6 +236,10 @@ func (s *State) apply(c Command, deck []Card) error {
 			b := *s.Bid
 			s.Contract = &b
 			n := len(s.Players)
+			if n == 4 && s.Declarer != s.Dealer {
+				// Four players: the talon is thrown in the dealer's face automatically.
+				s.TalonShown = true
+			}
 			l := Ledger{Round: s.Round, Label: b.String() + locales.Text("go.internal.game.engine.text019"), Pool: make([]int, n), Mountain: make([]int, n), Whists: matrix(n)}
 			l.Mountain[s.Declarer] = 3 * 4 * (b.Level - 5)
 			s.recordScore(l)

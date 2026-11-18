@@ -105,9 +105,17 @@ func (s *State) score() {
 						}
 						total := s.Taken[a] + s.Taken[b]
 						if s.DealerWhist {
+							// The dealer takes both defensive hands' tricks, but every player
+							// at the table, defenders included, is credited for a set.
 							total = s.Taken[s.Defenders[0]] + s.Taken[s.Defenders[1]]
-							l.Whists[a][d] += (total + 2*max(0, short)) * rate
+							l.Whists[a][d] += (total + max(0, short)) * rate
+							for _, p := range s.Defenders {
+								l.Whists[p][d] += max(0, short) * rate
+							}
 						} else if short > 0 && rules.Whist == "gentleman" && s.HalfSeat != b {
+							// Gentleman whist: the whister's tricks and both defenders' set
+							// credits are summed and split in two. A passer who chose "own"
+							// takes no part in the split and is paid only his own set.
 							v := (total + 2*short) * rate / 2
 							l.Whists[a][d] += v
 							l.Whists[b][d] += v
@@ -115,11 +123,7 @@ func (s *State) score() {
 							l.Whists[a][d] += total * rate
 							if short > 0 {
 								l.Whists[a][d] += short * rate
-								if s.HalfSeat == b {
-									l.Whists[a][d] += short * rate
-								} else {
-									l.Whists[b][d] += short * rate
-								}
+								l.Whists[b][d] += short * rate
 							}
 						}
 						ob := 1
@@ -156,6 +160,10 @@ func (s *State) score() {
 								l.Mountain[ws[1]] += base
 							}
 						}
+					}
+					// In four-player games a dealer who is not whisting is credited for a set too.
+					if n == 4 && !s.DealerWhist && short > 0 {
+						l.Whists[s.Dealer][d] += short * rate
 					}
 				}
 			}

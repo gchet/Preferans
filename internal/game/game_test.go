@@ -303,7 +303,8 @@ func TestBonus(t *testing.T) {
 	s.Talon = []Card{7, 15}
 	s.Taken = []int{6, 2, 2, 0}
 	s.score()
-	if s.Whists[3][0] != 24 {
+	// Bonus 3 x 8 plus one set credit for the non-whisting dealer.
+	if s.Whists[3][0] != 24+8 {
 		t.Fatal("bonus on failed contract")
 	}
 }

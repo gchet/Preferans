@@ -264,7 +264,8 @@ func TestDealerWhistScoresAndClaims(t *testing.T) {
 				s.score()
 				l := s.History[0]
 				base := 2 * (level - 5)
-				expected := (10 - taken + 2*max(0, level-taken)) * 2 * base
+				short := max(0, level-taken)
+				expected := (10 - taken + short) * 2 * base
 				if l.Whists[s.Dealer][s.Declarer] != expected {
 					t.Fatalf("dealer whists: %d, want %d", l.Whists[s.Dealer][s.Declarer], expected)
 				}
@@ -280,7 +281,8 @@ func TestDealerWhistScoresAndClaims(t *testing.T) {
 					t.Fatal("dealer responsibility incorrect")
 				}
 				for _, seat := range s.Defenders {
-					if l.Whists[seat][s.Declarer] != 0 || l.Mountain[seat] != 0 {
+					// Passed defenders only receive their own set credit and none of the dealer's tricks or liability.
+					if l.Whists[seat][s.Declarer] != short*2*base || l.Mountain[seat] != 0 {
 						t.Fatal("passed defender received dealer's score")
 					}
 				}
