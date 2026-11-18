@@ -171,7 +171,7 @@ jobs:
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           path: out
           merge-multiple: true
