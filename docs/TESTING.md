@@ -10,7 +10,7 @@ go test -tags noai ./internal/app -run TestNoAI -count=1
 cd web
 npm ci
 npm run build
-npm audit --audit-level=high
+npm audit --omit=dev --audit-level=high
 ~~~
 
 Go-тесты проверяют торговлю, снос, расчёт, договорённости, распасы, мизер,

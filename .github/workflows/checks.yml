@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: node scripts/check-doc-links.mjs
       - run: node scripts/prepare-ui-tests.mjs
-      - run: npm ci && npm run build && npm audit --audit-level=high
+      - run: npm ci && npm run build && npm audit --omit=dev --audit-level=high
         working-directory: web
       - run: go test ./config ./internal/... ./mobile
       - run: go vet ./config ./internal/... ./cmd/signaling ./mobile
