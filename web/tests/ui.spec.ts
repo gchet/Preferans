@@ -2349,3 +2349,29 @@ test('pool and mountain show a running tally like a handwritten score sheet', as
   await expect(page.locator('.pool-points').nth(1)).toHaveText(/2$/);
   await expect(page.locator('.pool-mountain').first()).toHaveText(/2\.6\.12\.\.56\.72$/);
 });
+
+test('teeth are added and removed one by one from the tooth button in my whist area', async ({page}) => {
+  await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
+  await page.goto(url);
+  await page.getByLabel('Боты для отладки').check();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
+  await expect(page.locator('.hand .card')).toHaveCount(10);
+  await expect(page.locator('.pool-tooth')).toHaveCount(0);
+  // Only my own whist area has tooth buttons: one per opponent.
+  await expect(page.locator('.tooth-button')).toHaveCount(2);
+  const add = async () => { await page.locator('.tooth-button').first().click(); await page.locator('[data-teeth-delta="1"]').click(); };
+  await add();
+  await add();
+  await expect(page.locator('.pool-tooth')).toHaveCount(2);
+  // The game keeps running: teeth never change the revision a player acts on.
+  await expect(page.locator('.hand .card')).toHaveCount(10);
+  await page.locator('.tooth-button').first().click();
+  await expect(page.locator('[data-teeth-delta="-1"]')).toBeEnabled();
+  await page.locator('[data-teeth-delta="-1"]').click();
+  await expect(page.locator('.pool-tooth')).toHaveCount(1);
+  // Nothing to remove on the other opponent.
+  await page.locator('.tooth-button').nth(1).click();
+  await expect(page.locator('[data-teeth-delta="-1"]')).toBeDisabled();
+});

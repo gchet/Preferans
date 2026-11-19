@@ -852,5 +852,13 @@
   "web.connection.ntfy_title": "ntfy servers",
   "web.connection.ntfy_label": "Server addresses (separated by ;)",
   "web.connection.ntfy_help": "Devices find each other through ntfy. Leave empty to use https://ntfy.sh. You can list several servers, e.g. https://ntfy.sh; https://ntfy.example.org: it works while at least one responds.",
-  "go.internal.app.p2p.text001": "network: %s"
+  "go.internal.app.p2p.text001": "network: %s",
+"go.game.teeth_unavailable": "Teeth can only be drawn during a game",
+"go.game.teeth_invalid": "These teeth cannot be changed that way",
+"web.teeth.on": "{p0}: teeth on {p1} — {p2}",
+"web.teeth.button": "Tooth on a player",
+"web.teeth.title": "Tooth on {p0}",
+"web.teeth.current": "Teeth now: {p0}",
+"web.teeth.add_one": "Add a tooth",
+"web.teeth.remove_one": "Remove a tooth"
 }

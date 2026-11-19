@@ -852,5 +852,13 @@
   "web.connection.ntfy_title": "Сервери ntfy",
   "web.connection.ntfy_label": "Адреси серверів (через «;»)",
   "web.connection.ntfy_help": "Через ntfy пристрої знаходять один одного. Якщо поле порожнє, використовується https://ntfy.sh. Можна перелічити кілька серверів, наприклад https://ntfy.sh; https://ntfy.example.org: працює, доки відповідає хоча б один.",
-  "go.internal.app.p2p.text001": "мережа: %s"
+  "go.internal.app.p2p.text001": "мережа: %s",
+"go.game.teeth_unavailable": "Зуби можна малювати лише під час партії",
+"go.game.teeth_invalid": "Не можна змінити зуби таким чином",
+"web.teeth.on": "{p0}: зубів на {p1} — {p2}",
+"web.teeth.button": "Зуб на гравця",
+"web.teeth.title": "Зуб на гравця {p0}",
+"web.teeth.current": "Зараз зубів: {p0}",
+"web.teeth.add_one": "Додати зуб",
+"web.teeth.remove_one": "Прибрати зуб"
 }

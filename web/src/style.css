@@ -1168,6 +1168,35 @@ hr {
     12px "Segoe UI",
     sans-serif;
 }
+.pool-drawing .pool-tooth {
+  fill: rgba(128, 96, 255, 0.82);
+  stroke: rgba(226, 220, 255, 1);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.pool-drawing .tooth-button {
+  cursor: pointer;
+}
+.pool-drawing .tooth-hit {
+  fill: rgba(255, 255, 255, 0.06);
+  stroke: rgba(199, 208, 173, 0.45);
+  stroke-width: 1;
+}
+.pool-drawing .tooth-button:hover .tooth-hit,
+.pool-drawing .tooth-button:focus-visible .tooth-hit {
+  fill: rgba(255, 255, 255, 0.22);
+}
+.pool-drawing .tooth-icon {
+  fill: none;
+  stroke: #d5dbbd;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.teeth-choice button {
+  min-width: 4.5rem;
+  font-size: 2rem;
+  line-height: 1;
+}
 .pool-drawing .pool-total {
   font:
     30px Georgia,

@@ -106,61 +106,63 @@ type Ledger struct {
 	Whists        [][]int `json:"whists"`
 }
 type State struct {
-	Auction       []AuctionCall  `json:"auction,omitempty"`
-	PlayedTricks  [][]Play       `json:"playedTricks,omitempty"`
-	LastTrick     []Play         `json:"lastTrick,omitempty"`
-	HereOwner     *int           `json:"hereOwner,omitempty"`
-	MisereCards   []Card         `json:"misereCards,omitempty"`
-	MiserePlayed  []Card         `json:"miserePlayed,omitempty"`
-	ManualPaused  bool           `json:"manualPaused,omitempty"`
-	PausedBy      int            `json:"pausedBy"`
-	PausedAt      int64          `json:"pausedAt,omitempty"`
-	PauseSeconds  int64          `json:"pauseSeconds,omitempty"`
-	FinishedAt    int64          `json:"finishedAt,omitempty"`
-	StartedAt     int64          `json:"startedAt,omitempty"`
-	DebugBots     string         `json:"debugBots,omitempty"`
-	ClaimAccepted []int          `json:"claimAccepted,omitempty"`
-	Claim         *int           `json:"claim,omitempty"`
-	DeclarerShown bool           `json:"declarerShown,omitempty"`
-	Deadline      int64          `json:"deadline,omitempty"`
-	Rules         *Rules         `json:"rules,omitempty"`
-	Version       string         `json:"version"`
-	ID            string         `json:"id"`
-	Revision      uint64         `json:"revision"`
-	Players       []Player       `json:"players"`
-	Target        int            `json:"target"`
-	Stage         string         `json:"stage"`
-	Dealer        int            `json:"dealer"`
-	Round         int            `json:"round"`
-	Turn          int            `json:"turn"`
-	Hands         [][]Card       `json:"hands"`
-	Talon         []Card         `json:"talon"`
-	TalonShown    bool           `json:"talonShown,omitempty"`
-	Discard       []Card         `json:"discard"`
-	Passed        []bool         `json:"passed"`
-	Spoken        []bool         `json:"spoken"`
-	Bid           *Contract      `json:"bid"`
-	Declarer      int            `json:"declarer"`
-	Contract      *Contract      `json:"contract"`
-	Defenders     []int          `json:"defenders"`
-	Defence       []int          `json:"defence"`
-	Open          bool           `json:"open"`
-	Controller    int            `json:"controller"`
-	HalfSeat      int            `json:"halfSeat"`
-	DealerLook    *int           `json:"dealerLook,omitempty"`
-	DealerWhist   bool           `json:"dealerWhist,omitempty"`
-	AllPass       bool           `json:"allPass"`
-	PassStreak    int            `json:"passStreak"`
-	PassPrice     int            `json:"passPrice"`
-	Trick         []Play         `json:"trick"`
-	TrickNo       int            `json:"trickNo"`
-	Winner        int            `json:"winner"`
-	Taken         []int          `json:"taken"`
-	Pool          []int          `json:"pool"`
-	Mountain      []int          `json:"mountain"`
-	Whists        [][]int        `json:"whists"`
-	History       []Ledger       `json:"history"`
-	Applied       map[string]int `json:"applied"`
+	Auction       []AuctionCall `json:"auction,omitempty"`
+	PlayedTricks  [][]Play      `json:"playedTricks,omitempty"`
+	LastTrick     []Play        `json:"lastTrick,omitempty"`
+	HereOwner     *int          `json:"hereOwner,omitempty"`
+	MisereCards   []Card        `json:"misereCards,omitempty"`
+	MiserePlayed  []Card        `json:"miserePlayed,omitempty"`
+	ManualPaused  bool          `json:"manualPaused,omitempty"`
+	PausedBy      int           `json:"pausedBy"`
+	PausedAt      int64         `json:"pausedAt,omitempty"`
+	PauseSeconds  int64         `json:"pauseSeconds,omitempty"`
+	FinishedAt    int64         `json:"finishedAt,omitempty"`
+	StartedAt     int64         `json:"startedAt,omitempty"`
+	DebugBots     string        `json:"debugBots,omitempty"`
+	ClaimAccepted []int         `json:"claimAccepted,omitempty"`
+	Claim         *int          `json:"claim,omitempty"`
+	DeclarerShown bool          `json:"declarerShown,omitempty"`
+	Deadline      int64         `json:"deadline,omitempty"`
+	Rules         *Rules        `json:"rules,omitempty"`
+	Version       string        `json:"version"`
+	ID            string        `json:"id"`
+	Revision      uint64        `json:"revision"`
+	Players       []Player      `json:"players"`
+	Target        int           `json:"target"`
+	Stage         string        `json:"stage"`
+	Dealer        int           `json:"dealer"`
+	Round         int           `json:"round"`
+	Turn          int           `json:"turn"`
+	Hands         [][]Card      `json:"hands"`
+	Talon         []Card        `json:"talon"`
+	TalonShown    bool          `json:"talonShown,omitempty"`
+	Discard       []Card        `json:"discard"`
+	Passed        []bool        `json:"passed"`
+	Spoken        []bool        `json:"spoken"`
+	Bid           *Contract     `json:"bid"`
+	Declarer      int           `json:"declarer"`
+	Contract      *Contract     `json:"contract"`
+	Defenders     []int         `json:"defenders"`
+	Defence       []int         `json:"defence"`
+	Open          bool          `json:"open"`
+	Controller    int           `json:"controller"`
+	HalfSeat      int           `json:"halfSeat"`
+	DealerLook    *int          `json:"dealerLook,omitempty"`
+	DealerWhist   bool          `json:"dealerWhist,omitempty"`
+	AllPass       bool          `json:"allPass"`
+	PassStreak    int           `json:"passStreak"`
+	PassPrice     int           `json:"passPrice"`
+	Trick         []Play        `json:"trick"`
+	TrickNo       int           `json:"trickNo"`
+	Winner        int           `json:"winner"`
+	Taken         []int         `json:"taken"`
+	Pool          []int         `json:"pool"`
+	Mountain      []int         `json:"mountain"`
+	Whists        [][]int       `json:"whists"`
+	// Teeth[from][to] counts the "teeth" player from has drawn on player to in his whist area.
+	Teeth   [][]int        `json:"teeth,omitempty"`
+	History []Ledger       `json:"history"`
+	Applied map[string]int `json:"applied"`
 }
 type Command struct {
 	Round     int       `json:"round,omitempty"`
@@ -175,7 +177,13 @@ type Command struct {
 	Cards     []Card    `json:"cards,omitempty"`
 	Contract  *Contract `json:"contract,omitempty"`
 	Name      string    `json:"name,omitempty"`
+	// Aim and Delta are used by the "teeth" action: whom the teeth are drawn on and how many are added (negative: removed).
+	Aim   *int `json:"aim,omitempty"`
+	Delta int  `json:"delta,omitempty"`
 }
+
+// MaxTeeth limits the teeth one player can keep on another one.
+const MaxTeeth = 9
 
 // Preserve already-started saves made when the legacy switch skipped all talons.
 // New ordinary miseres always have a two-card discard and do not match this case.

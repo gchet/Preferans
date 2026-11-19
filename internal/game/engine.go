@@ -24,7 +24,9 @@ func Apply(s *State, c Command, deck []Card) (*State, error) {
 	// Both defenders may answer concurrently. Accept their independent choice
 	// only within the same deal while selection is still open.
 	catchChoice := s.Stage == "catch" && c.Round == s.Round && c.Round > 0 && c.Revision <= s.Revision && (c.Action == "catch" || c.Action == "trust")
-	if c.Revision != s.Revision && !catchChoice {
+	// Teeth are a harmless table joke: they never invalidate other players' commands.
+	teeth := c.Action == "teeth"
+	if c.Revision != s.Revision && !catchChoice && !teeth {
 		return nil, locales.Errorf("go.internal.game.engine.text003")
 	}
 	t := s.Clone()
@@ -34,7 +36,9 @@ func Apply(s *State, c Command, deck []Card) (*State, error) {
 	if t.Stage == "finished" && s.Stage != "finished" {
 		t.FinishedAt = time.Now().Unix()
 	}
-	t.Revision++
+	if !teeth {
+		t.Revision++
+	}
 	t.Applied[c.ID] = c.Seat
 	return t, nil
 }
@@ -58,6 +62,9 @@ func (s *State) apply(c Command, deck []Card) error {
 	}
 	if s.PausedAt > 0 {
 		return locales.Errorf("go.internal.game.engine.text005")
+	}
+	if c.Action == "teeth" {
+		return s.drawTeeth(c)
 	}
 	rules := s.Agreements()
 	if c.Action == "debug-bots" {

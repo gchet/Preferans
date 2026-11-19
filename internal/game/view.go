@@ -61,6 +61,7 @@ type View struct {
 	Pool             []int        `json:"pool"`
 	Mountain         []int        `json:"mountain"`
 	Whists           [][]int      `json:"whists"`
+	Teeth            [][]int      `json:"teeth"`
 	Results          []int        `json:"results"`
 	History          []Ledger     `json:"history"`
 }
@@ -72,7 +73,7 @@ type BotThinking struct {
 }
 
 func (s *State) View(seat int) View {
-	v := View{ID: s.ID, Version: s.Version, Revision: s.Revision, Seat: seat, Stage: s.Stage, Target: s.Target, Round: s.Round, Dealer: s.Dealer, Turn: s.Turn, Actor: s.Actor(), Trick: s.Trick, TrickNo: s.TrickNo, Taken: s.Taken, Winner: s.Winner, Bid: s.Bid, Contract: s.Contract, Declarer: s.Declarer, Defence: s.Defence, Open: s.Open, AllPass: s.AllPass, PassPrice: s.PassPrice, PassStreak: s.PassStreak, Pool: s.Pool, Mountain: s.Mountain, Whists: s.Whists, Results: s.ResultNumerators(), History: s.History}
+	v := View{ID: s.ID, Version: s.Version, Revision: s.Revision, Seat: seat, Stage: s.Stage, Target: s.Target, Round: s.Round, Dealer: s.Dealer, Turn: s.Turn, Actor: s.Actor(), Trick: s.Trick, TrickNo: s.TrickNo, Taken: s.Taken, Winner: s.Winner, Bid: s.Bid, Contract: s.Contract, Declarer: s.Declarer, Defence: s.Defence, Open: s.Open, AllPass: s.AllPass, PassPrice: s.PassPrice, PassStreak: s.PassStreak, Pool: s.Pool, Mountain: s.Mountain, Whists: s.Whists, Teeth: s.TeethMatrix(), Results: s.ResultNumerators(), History: s.History}
 	v.LastTrick = append([]Play(nil), s.LastTrick...)
 	v.Passed = s.Passed
 	v.DebugBots = s.DebugBots

@@ -111,6 +111,7 @@ interface View {
   pool: number[];
   mountain: number[];
   whists: number[][];
+  teeth?: number[][];
   results: number[];
   history: Ledger[];
 }
@@ -382,7 +383,48 @@ function openClaim() {
   $("#panel-title").textContent = t("web.main.text216");
   $("#panel-body").innerHTML = `<label>${t("web.main.text215")}<select id="claim-tricks">${Array.from({length:11-v.trickNo},(_,n)=>`<option value="${n}">${t("web.main.text214", {p1: trickCount(n), p2: (v.taken[v.seat] || 0)+n})}</option>`).join("")}</select></label><button data-action="submit-claim" class="primary">${t("web.main.text154")}</button>`;
 }
-function openContract(action: "bid" | "declare" | "declare-no-talon") {
+// "Teeth" on an opponent: a tooth button in my whist area opens a choice of + (add) or - (remove) one tooth.
+let teethAim = -1;
+function teethAllowed(v: View) {
+  return !!v.teeth && !["lobby", "finished"].includes(v.stage) && !v.manualPaused && !status.paused;
+}
+function openTeeth(aim: number) {
+  const v = status.view!;
+  if (!teethAllowed(v) || aim === v.seat || !v.players[aim]) return;
+  teethAim = aim;
+  const have = v.teeth?.[v.seat]?.[aim] || 0;
+  showPanel("teeth");
+  $("#panel-title").textContent = t("web.teeth.title", {p0: esc(v.players[aim].name)});
+  $("#panel-body").innerHTML = `<p class="muted">${t("web.teeth.current", {p0: have})}</p><div class="toolbar teeth-choice"><button type="button" data-teeth-delta="1" aria-label="${t("web.teeth.add_one")}" title="${t("web.teeth.add_one")}" ${have >= 9 ? "disabled" : ""}>+</button><button type="button" data-teeth-delta="-1" aria-label="${t("web.teeth.remove_one")}" title="${t("web.teeth.remove_one")}" ${have <= 0 ? "disabled" : ""}>−</button></div>`;
+}
+async function changeTeeth(delta: number) {
+  const v = status.view!;
+  await rpc("command", {command: {id: crypto.randomUUID(), seat: v.seat, revision: v.revision, action: "teeth", aim: teethAim, delta}});
+  $<HTMLDialogElement>("#panel").close();
+}
+// The tooth buttons live inside the score drawing, which is itself a button: handle them first.
+document.addEventListener("click", e => {
+  const el = e.target as Element;
+  const tooth = el.closest<SVGElement>("[data-tooth-aim]");
+  if (tooth) {
+    e.stopPropagation();
+    e.preventDefault();
+    openTeeth(Number(tooth.dataset.toothAim));
+    return;
+  }
+  const choice = el.closest<HTMLButtonElement>("[data-teeth-delta]");
+  if (choice) {
+    e.stopPropagation();
+    if (!choice.disabled) void run(() => changeTeeth(Number(choice.dataset.teethDelta)));
+  }
+}, true);
+document.addEventListener("keydown", e => {
+  if ((e.key === "Enter" || e.key === " ") && (e.target as Element).matches?.("[data-tooth-aim]")) {
+    e.stopPropagation();
+    e.preventDefault();
+    openTeeth(Number((e.target as SVGElement).dataset.toothAim));
+  }
+}, true);function openContract(action: "bid" | "declare" | "declare-no-talon") {
   const v = status.view!;
   if (!(v.actions || []).includes(action) || (action === "declare" && !talonThrown(v) && selected.length !== 2)) return;
   contractContext = {revision: v.revision, action};
@@ -544,7 +586,7 @@ function render() {
 
  ${v.stage === "lobby"
      ? `<section class="center lobby"><div class="table-symbol">♠</div><h2>${t("web.main.text173", {p0: v.players.length})}</h2><p>${rulesSummary(v.rules || defaultRules, v.target)}</p><button data-panel="settings" class="quiet">${t("web.main.text174")}</button>${appearance.debug && status.host && !v.players[0].ready ? `<button data-panel="debug-bots">${t("web.main.text172", {p0: debugBotsLabel(v.debugBots)})}</button>` : appearance.debug && v.debugBots ? `<p>${t("web.main.text172", {p0: debugBotsLabel(v.debugBots)})}</p>` : ""}</section>`
-     : `<section class="center"><div class="table-announcement"><div class="turn-message">${esc(title)}<br>${esc(turnText)}</div>${v.players.length === 3 ? dealerHand : ""}</div>${poolDrawing(v, esc)}<div class="trick-label">${v.stage === "trick" ? `${t("web.main.text170", {p0: esc(v.players[v.winner]?.name)})}` : v.stage === "round" || v.stage === "finished" ? t("web.main.text169") : `${t("web.main.text168", {p0: Math.min(v.trickNo + 1, 10)})}`}</div><div class="trick-cards">${(["play", "trick"].includes(v.stage) ? v.trick || [] : []).filter(p => p.seat >= 0).map((p, n) => {
+     : `<section class="center"><div class="table-announcement"><div class="turn-message">${esc(title)}<br>${esc(turnText)}</div>${v.players.length === 3 ? dealerHand : ""}</div>${poolDrawing(v, esc, {teeth: teethAllowed(v)})}<div class="trick-label">${v.stage === "trick" ? `${t("web.main.text170", {p0: esc(v.players[v.winner]?.name)})}` : v.stage === "round" || v.stage === "finished" ? t("web.main.text169") : `${t("web.main.text168", {p0: Math.min(v.trickNo + 1, 10)})}`}</div><div class="trick-cards">${(["play", "trick"].includes(v.stage) ? v.trick || [] : []).filter(p => p.seat >= 0).map((p, n) => {
       const rel = p.seat < 0 ? -1 : (p.seat - v.seat + v.players.length) % v.players.length;
       const pos = rel === 0 ? "self" : rel === 1 ? "left" : v.players.length === 4 && rel === 2 ? "top" : "right";
       return `<div class="trick-seat-${pos}" style="--trick-order:${n}">${card(p.card)}<small>${p.seat < 0 ? t("web.main.text171") : esc(v.players[p.seat].name)}</small></div>`;
@@ -1158,6 +1200,7 @@ async function refreshState() {
   const key = JSON.stringify([
     s.view?.id,
     s.view?.revision,
+    s.view?.teeth,
     s.view?.debugBotSeat,
     s.view?.debugWaitingSeat,
     s.aiReview?.id,
