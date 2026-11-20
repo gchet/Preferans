@@ -2,6 +2,7 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import { spawn, ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { readFile } from 'node:fs/promises';
+import { clickIdle } from './helpers';
 let processHandle: ChildProcess;
 let url: string;
 async function dragCard(page: Page, source: Locator, target: Locator) {
@@ -55,7 +56,7 @@ for(const players of [3,4]) test(`preview separated suits ${players} players`, a
   await page.goto(url);
   await page.locator('[name="players"]').selectOption(String(players));
   await page.getByLabel('Боты для отладки').check();
-  await page.getByRole('button',{name:'Создать стол →'}).click();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.center.lobby')).toBeVisible();
   let stage='auction', revision=980;
   await page.route('**/api',async route=>{

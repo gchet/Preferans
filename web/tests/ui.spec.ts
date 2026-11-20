@@ -469,7 +469,7 @@ test("no-AI build hides model settings and blocks AI operations",async({page})=>
   await page.goto(url);
   await page.getByRole("button",{name:"Настройки",exact:true}).click();
   await expect(page.getByRole("tab",{name:"ИИ боты",exact:true})).toHaveCount(0);
-  await page.locator("#settings-form > button.primary").click();
+  await saveSettings(page);
   await expect(page.locator("#panel")).not.toBeVisible();
   await page.locator("#create-form [name=bots]").check();
   await clickIdle(page, page.getByRole("button",{name:"Создать стол →"}));
