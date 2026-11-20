@@ -30,3 +30,16 @@ export async function selectLanguage(page: Page, picker: Locator, lang: string) 
     await expect(page.locator("html")).toHaveAttribute("lang", lang, { timeout: 3000 });
   }).toPass({ timeout: 20000 });
 }
+
+// "Save" exists only on the Rules and AI tabs; the other settings tabs save on change. Finish editing settings
+// either way and close the panel.
+export async function saveSettings(page: Page) {
+  const save = page.locator("#settings-form > button.primary");
+  if (await save.isVisible()) {
+    await save.click();
+    return;
+  }
+  await page.waitForTimeout(400);
+  await expect(page.locator("body")).not.toHaveClass(/\bbusy\b/, { timeout: 5000 });
+  await page.keyboard.press("Escape");
+}

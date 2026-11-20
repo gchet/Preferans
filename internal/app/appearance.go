@@ -20,6 +20,7 @@ type Appearance struct {
 	DebugPlay      *bool           `json:"debugPlay,omitempty"`
 	Debug          bool            `json:"debug"`
 	PassPriceHint  *bool           `json:"passPriceHint,omitempty"`
+	PoolDots       *bool           `json:"poolDots,omitempty"` // пуля и гора нарастающим итогом через точку; пусто — включено
 	PlayerCount    int             `json:"playerCount,omitempty"`
 	PoolTarget     int             `json:"poolTarget,omitempty"`
 	DefaultRoom    string          `json:"defaultRoom"`

@@ -289,8 +289,6 @@
   "web.main.text089": "Android сохраняет журнал в каталоге приложения. В Windows журнал по умолчанию пишется в каталог данных; путь можно задать запуском через",
   "web.main.text090": "или",
   "web.main.text095": "Сохранить",
-  "web.main.text096": "Закрыть стол и вернуться на главную",
-  "web.main.text097": "Принятые ходы уже сохранены.",
   "web.main.text098": "Мизер",
   "web.main.text099": "Распасы",
   "web.main.text100": "Обычная игра",
@@ -860,5 +858,7 @@
 "web.teeth.title": "Зуб на игрока {p0}",
 "web.teeth.current": "Сейчас зубов: {p0}",
 "web.teeth.add_one": "Добавить зуб",
-"web.teeth.remove_one": "Убрать зуб"
+"web.teeth.remove_one": "Убрать зуб",
+"web.settings.rules": "Правила",
+"web.settings.pool_dots": "Пуля и гора с точками"
 }

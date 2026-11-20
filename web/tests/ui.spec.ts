@@ -3,7 +3,7 @@ import { spawn, ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import { clickIdle, startGame, selectLanguage } from './helpers';
+import { clickIdle, startGame, selectLanguage, saveSettings } from './helpers';
 let processHandle: ChildProcess;
 let url: string;
 
@@ -26,7 +26,7 @@ test('rooms: local language selection persists across screens without changing t
   await expect(page.getByRole('button',{name:'Create table →',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Settings',exact:true}).click();
   await expect(page.getByRole('tab',{name:'Cards',exact:true})).toBeVisible();
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await page.reload();
   await expect(picker).toHaveValue('en');
   await page.locator('#create-form [name="name"]').fill('Гена');
@@ -91,7 +91,7 @@ test.describe('local offline interface',()=>{
     await expect(bots).toBeChecked();await expect(bots).toBeDisabled();
     await page.getByRole('button',{name:'Настройки',exact:true}).tap();
     await page.getByLabel('Только игра с ботами (без интернета)',{exact:true}).check();
-    await page.locator('#settings-form > button.primary').tap();
+    await saveSettings(page);
     await page.reload();
     await expect(page.locator('#create-form')).toBeVisible();
     const externalActions:string[]=[];
@@ -119,7 +119,7 @@ test.describe('local offline interface',()=>{
     await page.getByRole('button',{name:'Настройки',exact:true}).tap();
     await expect(page.getByLabel('Только игра с ботами (без интернета)',{exact:true})).toBeChecked();
     await page.getByLabel('Только игра с ботами (без интернета)',{exact:true}).uncheck();
-    await page.locator('#settings-form > button.primary').tap();
+    await saveSettings(page);
     await expect(page.getByRole('button',{name:'Играть локально с ботами',exact:true})).toBeVisible();
   });
 });
@@ -128,7 +128,7 @@ test('debug discard marks two hand cards then opens the normal contract grid',as
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.locator('[name="debug-auction"]').check();
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await page.getByLabel('Боты для отладки').check();
   await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
@@ -180,7 +180,7 @@ for(const gesture of ['right-click','long-press'])test(`debug bot turn accepts $
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.locator('[name="debug-auction"]').check();
   await expect(page.locator('[name="debug-play"]')).not.toBeChecked();
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await page.getByLabel('Боты для отладки').check();
   await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
@@ -258,7 +258,7 @@ for(const players of [3,4])test(`auction after unbeaten all-passes reminds about
   await expect(reminder).toHaveText('Были распасы (4)');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByLabel('Подсказка цены распасов',{exact:true}).uncheck();
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await expect(reminder).toHaveCount(0);
 });
 
@@ -277,7 +277,7 @@ test('all-pass price hint updates labels and persists when disabled',async({page
   await expect(page.locator('.player-left .speech')).toHaveText('Распасы (по 4)');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByLabel('Подсказка цены распасов',{exact:true}).uncheck();
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('.player-left .speech')).toHaveText('Распасы');
   await page.reload();
   await expect(page.locator('.player-left .speech')).toHaveText('Распасы');
@@ -550,7 +550,7 @@ test('AI review settings persist and dialogue holds the decision until Continue'
   await page.getByRole('tab',{name:'ИИ боты',exact:true}).click();
   await page.locator('[data-ai-review]').check();
   await page.locator('[data-ai-language]').selectOption('en');
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.reload();
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
@@ -607,7 +607,7 @@ test('debug preference gates bot tools and inspection toggles a shared pause',as
   await page.locator('[name="debug-auction"]').check();
   await page.locator('[name="debug-play"]').check();
   await expect(page.locator('[data-ai-field="timeout"]')).toHaveValue('10');
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await expect(page.locator('[data-panel="debug-bots"]')).toBeVisible();
   await page.reload();
@@ -666,7 +666,7 @@ test('AI models and encrypted keys persist and can be assigned to individual bot
   await page.locator('[data-ai-field="maxTokens"]').fill('700');
   await page.locator('[data-ai-field="temperature"]').fill('0.2');
   await page.screenshot({path:'../.build/ai-model-settings.png'});
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.reload();
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
@@ -676,7 +676,7 @@ test('AI models and encrypted keys persist and can be assigned to individual bot
   await expect(page.locator('[data-ai-field="maxTokens"]')).toHaveValue('700');
   await expect(page.locator('[data-ai-field="temperature"]')).toHaveValue('0.2');
   await expect(page.locator('#ai-key-value')).toHaveValue('');
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await page.getByLabel('Боты для отладки').check();
   await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
   await expect(page.locator('.table-heading [data-panel="bot-models"]')).toHaveCount(0);
@@ -852,7 +852,7 @@ test('host AI flag hides an already open tab and restores it after leaving',asyn
   await expect(page.locator('#settings-ai')).toBeVisible();
   enabled=false;
   await expect(page.getByRole('tab',{name:'ИИ боты',exact:true})).toHaveCount(0);
-  await expect(page.locator('#settings-game')).toBeVisible();
+  await expect(page.locator('#settings-play')).toBeVisible();
   await expect(page.locator('#settings-ai')).toHaveCount(0);
   enabled=true;
   await expect(page.getByRole('tab',{name:'ИИ боты',exact:true})).toBeVisible();
@@ -912,10 +912,11 @@ for (const n of [3,4]) test('table preferences and shared pause clock survive re
   await page.setViewportSize({width:1100,height:800});
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await page.locator('[name="rule-target"]').selectOption('50');
   await page.locator('[name="rule-end"]').selectOption('time');
   await page.locator('[name="rule-minutes"]').selectOption('45');
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await expect(page.getByLabel('Время, минут',{exact:true})).toHaveValue('45');
   await expect(page.getByLabel('Пуля до',{exact:true})).toBeHidden();
@@ -999,13 +1000,15 @@ test('finished result stays visible and history opens without joining',async({pa
 test('finish-after-passes agreement persists through settings and reload', async ({page}) => {
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await expect(page.getByRole('tab',{name:'Администратор',exact:true})).toHaveCount(0);
   await expect(page.locator('[name="rule-finish-after-pass-exit"]')).toBeChecked();
   await page.locator('[name="rule-finish-after-pass-exit"]').uncheck();
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.reload();
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await expect(page.locator('[name="rule-finish-after-pass-exit"]')).not.toBeChecked();
 });
 
@@ -1073,13 +1076,15 @@ test('player count survives reopening and notices expire',async({page})=>{
   await page.reload();
   await expect(page.locator('[name="players"]')).toHaveValue('4');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.locator('#delete-save').click();
   await expect(page.locator('#notice')).toBeVisible();
   await expect(page.locator('#notice')).not.toBeVisible({timeout:4500});
   await page.reload();
   await expect(page.locator('[name="players"]')).toHaveValue('4');
+  // A status poll can still be in flight when the test ends; do not wait for it or fail on it.
+  await page.unrouteAll({behavior:'ignoreErrors'});
 });
 
 test('room owner can close a table without a local game',async({page})=>{
@@ -1137,7 +1142,7 @@ test('Windows log path can be saved in connection settings', async ({page}) => {
   const path=resolve('..', '.build', `settings-log-${Date.now()}.log`);
   await page.getByLabel('Путь к журналу Windows',{exact:true}).fill(path);
   await page.locator('[name="log-enabled"]').check();
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await expect.poll(async () => { try { return await readFile(path,'utf8'); } catch { return ''; } }).toContain('Путь журнала применён');
   await page.reload();
@@ -1337,7 +1342,7 @@ test('rooms: directory, lobby, voice controls and default room',async({page})=>{
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.getByRole('tab',{name:'Подключение',exact:true}).click();
   await page.locator('[name="default-room"]').selectOption('room-a');
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect.poll(()=>defaultRoom).toBe('room-a');
   await expect(page.locator('body')).not.toHaveClass(/busy/);
   await page.locator('[data-room-action="exit"]').click();
@@ -1377,8 +1382,9 @@ test('guest sees Exit on the table and in settings', async ({page}) => {
     await route.fulfill({response,json:body});
   });
   await expect(page.locator('#finish-party-topbar')).toHaveText('Выйти');
+  // The settings no longer carry a separate leave button.
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
-  await expect(page.locator('#leave')).toHaveText('Выйти');
+  await expect(page.locator('#leave')).toHaveCount(0);
 });
 
 for(const players of [3,4]) test(`edited SVG layout ${players} players uses equal cards`, async ({page})=>{
@@ -1488,6 +1494,7 @@ test('table agreements save before creation and freeze on start', async ({page})
   await page.goto(url);
   await expect(page.locator('#finish-party')).toBeHidden();
   await page.locator('[data-panel="settings"]').first().click();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await page.locator('[name="rule-end"]').selectOption('time');
   await expect(page.locator('[name="rule-target"]')).toBeHidden();
   await expect(page.locator('[name="rule-minutes"] option')).toHaveText(['30','45','60','90','120']);
@@ -1520,6 +1527,7 @@ test('table agreements save before creation and freeze on start', async ({page})
   await expect(page.locator('.center.lobby')).toContainText('распасы 1–2–4');
   await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
   await page.locator('[data-panel="settings"]').first().click();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await page.locator('[name="rule-whist"]').selectOption('greedy');
   await page.getByRole('button',{name:'Сохранить',exact:true}).click();
   await expect(page.getByRole('button',{name:'Готов',exact:true})).toBeVisible();
@@ -1640,7 +1648,7 @@ for (const [mode,label] of [['pass','Распасы'],['misere','Мизер']]) 
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await page.locator('[name="debug-auction"]').check();
   await page.locator('[name="debug-play"]').check();
-  await page.locator('#settings-form > button.primary').click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.getByLabel('Боты для отладки').check();
   await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
@@ -1873,6 +1881,7 @@ test('four player talon toggle skips manual discard without scrolling', async ({
 for (const players of [3,4]) test(`reference settings, contract grid and reversible discard: ${players}`, async ({page}) => {
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await expect(page.getByRole('tab',{name:'Ленинград'})).toHaveAttribute('aria-selected','true');
   for (const name of ['Сочи','Классика','Ростов']) await expect(page.getByRole('tab',{name:new RegExp(name)})).toBeDisabled();
   await expect(page.locator('[name="rule-prices"]')).toHaveValue('2 4 8');
@@ -2092,7 +2101,7 @@ test("connection settings and invalid invitation API", async ({ page }) => {
   await expect(page.locator('[name="turn-server"]')).toHaveCount(0);
   // поля кода сервиса скрыты: сервис выбирается автоматически публичным лобби
   await expect(page.locator('#service-block')).toBeHidden();
-  await page.getByRole("button", {name:"Сохранить",exact:true}).click();
+  await saveSettings(page);
   await expect(page.locator("#panel")).not.toBeVisible();
 });
 
@@ -2138,7 +2147,7 @@ test('three SVG deck choices preview and persist', async ({page}) => {
     await expect.poll(() => page.locator('#deck-preview .card-image').evaluateAll(es => es.every(e => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0))).toBeTruthy();
     await page.locator('#deck-preview').screenshot({path:`../.build/deck-${deck}.png`});
   }
-  await page.getByRole('button',{name:'Сохранить',exact:true}).click();
+  await saveSettings(page);
   await expect(page.locator('#panel')).not.toBeVisible();
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-deck','woodcut');
@@ -2310,7 +2319,7 @@ test('update: automatic update setting is on by default, can be switched off and
   const box = page.getByLabel('Автоматическое обновление', {exact: true});
   await expect(box).toBeChecked();
   await box.uncheck();
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect.poll(() => saved?.autoUpdate).toBe(false);
   await page.reload();
   await page.waitForTimeout(1500);
@@ -2320,7 +2329,7 @@ test('update: automatic update setting is on by default, can be switched off and
   await expect(page.getByLabel('Автоматическое обновление', {exact: true})).not.toBeChecked();
   // возвращаем настройку: приложение для тестов одно на весь файл
   await page.getByLabel('Автоматическое обновление', {exact: true}).check();
-  await page.locator('#settings-form button.primary').click();
+  await saveSettings(page);
   await expect.poll(() => saved?.autoUpdate).toBe(true);
 });
 test('pool and mountain show a running tally like a handwritten score sheet', async ({page}) => {
@@ -2346,8 +2355,15 @@ test('pool and mountain show a running tally like a handwritten score sheet', as
   });
   await page.reload();
   await expect(page.locator('.pool-points').first()).toHaveText(/2\.10\.20$/);
+
   await expect(page.locator('.pool-points').nth(1)).toHaveText(/2$/);
   await expect(page.locator('.pool-mountain').first()).toHaveText(/2\.6\.12\.\.56\.72$/);
+  // The dots can be switched off in the Play tab of the settings: plain totals are shown then.
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.locator('[name="pool-dots"]').uncheck();
+  await expect(page.locator('.pool-points').first()).toHaveText(/(^|[^.\d])20$/);
+  await expect(page.locator('.pool-points').nth(1)).toHaveText(/2$/);
+  await expect(page.locator('.pool-mountain').first()).toHaveText(/(^|[^.\d])72$/);
 });
 
 test('teeth are added and removed one by one from the tooth button in my whist area', async ({page}) => {
@@ -2374,4 +2390,58 @@ test('teeth are added and removed one by one from the tooth button in my whist a
   // Nothing to remove on the other opponent.
   await page.locator('.tooth-button').nth(1).click();
   await expect(page.locator('[data-teeth-delta="-1"]')).toBeDisabled();
+});
+test('teeth over a whist number are more transparent than teeth beside it', async ({page}) => {
+  await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
+  await page.goto(url);
+  await page.getByLabel('Боты для отладки').check();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
+  await page.route('**/api', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    if (route.request().postDataJSON().action === 'status') {
+      Object.assign(body.data.view, {revision: 2001, whists: [[0,12,0],[0,0,0],[0,0,0]], teeth: [[0,8,0],[0,0,0],[0,0,0]]});
+    }
+    await route.fulfill({response,json:body});
+  });
+  await page.reload();
+  await expect(page.locator('.pool-tooth')).toHaveCount(8);
+  const over = await page.locator('.pool-tooth.over-number').count();
+  expect(over).toBeGreaterThan(0);
+  expect(over).toBeLessThan(8);
+  await expect(page.locator('.pool-tooth').first()).not.toHaveClass(/over-number/);
+});
+
+test('settings: the Play tab saves on change, the Save button stays on the Rules and AI tabs', async ({page}) => {
+  await page.goto(url);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  const save = page.locator('#settings-form > button.primary');
+  await expect(page.getByRole('tab',{name:'Игра',exact:true})).toHaveAttribute('aria-selected','true');
+  await expect(page.locator('#settings-play [name="local-only"]')).toBeVisible();
+  await expect(page.locator('#settings-play [name="pass-price-hint"]')).toBeChecked();
+  await expect(page.locator('#settings-play [name="pool-dots"]')).toBeChecked();
+  await expect(page.locator('#settings-play [name="debug-auction"]')).toBeVisible();
+  await expect(page.locator('#settings-play [name="debug-play"]')).toBeVisible();
+  await expect(save).toBeHidden();
+  await page.getByRole('tab',{name:'Правила',exact:true}).click();
+  await expect(save).toBeVisible();
+  await expect(page.locator('#settings-game [name="debug-auction"]')).toHaveCount(0);
+  await page.getByRole('tab',{name:'Карты',exact:true}).click();
+  await expect(save).toBeHidden();
+  await page.getByRole('tab',{name:'Подключение',exact:true}).click();
+  await expect(save).toBeHidden();
+  await page.getByRole('tab',{name:'Игра',exact:true}).click();
+  await page.locator('[name="pool-dots"]').uncheck();
+  await page.locator('[name="pass-price-hint"]').uncheck();
+  await page.locator('[name="debug-play"]').check();
+  // No Save pressed: closing and reopening shows the stored values.
+  await page.waitForTimeout(600);
+  await expect(page.locator('body')).not.toHaveClass(/busy/);
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await expect(page.locator('[name="pool-dots"]')).not.toBeChecked();
+  await expect(page.locator('[name="pass-price-hint"]')).not.toBeChecked();
+  await expect(page.locator('[name="debug-play"]')).toBeChecked();
 });

@@ -9,6 +9,7 @@ export interface Appearance {
   debugAuction?: boolean;
   debugPlay?: boolean;
   passPriceHint?: boolean;
+  poolDots?: boolean;
 	playerCount?: number;
 	poolTarget?: number;
   defaultRoom?: string;

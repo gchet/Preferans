@@ -1197,6 +1197,11 @@ hr {
   font-size: 2rem;
   line-height: 1;
 }
+/* A tooth lying over a whist number is more transparent, so the number stays readable. */
+.pool-drawing .pool-tooth.over-number {
+  fill: rgba(128, 96, 255, 0.32);
+  stroke: rgba(226, 220, 255, 0.85);
+}
 .pool-drawing .pool-total {
   font:
     30px Georgia,

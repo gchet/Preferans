@@ -309,7 +309,7 @@ function syncAISettingsTab() {
   const tab=document.querySelector<HTMLButtonElement>('#settings-tab-ai');
   const section=document.querySelector<HTMLElement>('#settings-ai');
   if(status.aiEnabled===false) {
-    if(tab?.getAttribute('aria-selected')==='true')document.querySelector<HTMLButtonElement>('#settings-tab-game')?.click();
+    if(tab?.getAttribute('aria-selected')==='true')document.querySelector<HTMLButtonElement>('#settings-tab-play')?.click();
     tab?.remove();section?.remove();
   } else if(!section) {
     document.querySelector('.settings-tabs')!.insertAdjacentHTML('beforeend',`<button type="button" role="tab" id="settings-tab-ai" data-settings-tab="ai" aria-controls="settings-ai" aria-selected="false">${t('web.ai.tab')}</button>`);
@@ -586,7 +586,7 @@ function render() {
 
  ${v.stage === "lobby"
      ? `<section class="center lobby"><div class="table-symbol">♠</div><h2>${t("web.main.text173", {p0: v.players.length})}</h2><p>${rulesSummary(v.rules || defaultRules, v.target)}</p><button data-panel="settings" class="quiet">${t("web.main.text174")}</button>${appearance.debug && status.host && !v.players[0].ready ? `<button data-panel="debug-bots">${t("web.main.text172", {p0: debugBotsLabel(v.debugBots)})}</button>` : appearance.debug && v.debugBots ? `<p>${t("web.main.text172", {p0: debugBotsLabel(v.debugBots)})}</p>` : ""}</section>`
-     : `<section class="center"><div class="table-announcement"><div class="turn-message">${esc(title)}<br>${esc(turnText)}</div>${v.players.length === 3 ? dealerHand : ""}</div>${poolDrawing(v, esc, {teeth: teethAllowed(v)})}<div class="trick-label">${v.stage === "trick" ? `${t("web.main.text170", {p0: esc(v.players[v.winner]?.name)})}` : v.stage === "round" || v.stage === "finished" ? t("web.main.text169") : `${t("web.main.text168", {p0: Math.min(v.trickNo + 1, 10)})}`}</div><div class="trick-cards">${(["play", "trick"].includes(v.stage) ? v.trick || [] : []).filter(p => p.seat >= 0).map((p, n) => {
+     : `<section class="center"><div class="table-announcement"><div class="turn-message">${esc(title)}<br>${esc(turnText)}</div>${v.players.length === 3 ? dealerHand : ""}</div>${poolDrawing(v, esc, {teeth: teethAllowed(v), dots: appearance.poolDots !== false})}<div class="trick-label">${v.stage === "trick" ? `${t("web.main.text170", {p0: esc(v.players[v.winner]?.name)})}` : v.stage === "round" || v.stage === "finished" ? t("web.main.text169") : `${t("web.main.text168", {p0: Math.min(v.trickNo + 1, 10)})}`}</div><div class="trick-cards">${(["play", "trick"].includes(v.stage) ? v.trick || [] : []).filter(p => p.seat >= 0).map((p, n) => {
       const rel = p.seat < 0 ? -1 : (p.seat - v.seat + v.players.length) % v.players.length;
       const pos = rel === 0 ? "self" : rel === 1 ? "left" : v.players.length === 4 && rel === 2 ? "top" : "right";
       return `<div class="trick-seat-${pos}" style="--trick-order:${n}">${card(p.card)}<small>${p.seat < 0 ? t("web.main.text171") : esc(v.players[p.seat].name)}</small></div>`;
@@ -712,7 +712,54 @@ document.addEventListener("click", e => {
     t.setAttribute("aria-selected", String(active));
     document.getElementById(t.getAttribute("aria-controls")!)!.hidden = !active;
   });
+  // Play, Cards and Connection settings are saved as soon as they change; only Rules and AI need the button.
+  const save = document.querySelector<HTMLButtonElement>("#settings-form > button.primary");
+  if (save) save.hidden = !["game", "ai"].includes(tab.dataset.settingsTab || "");
 });
+let settingsSaving = false;
+document.addEventListener("change", e => {
+  const el = e.target as HTMLElement;
+  if (!el.closest("#settings-play, #settings-cards, #settings-connection") || !document.querySelector("#settings-form")) return;
+  void autosaveSettings();
+});
+async function autosaveSettings() {
+  const form = document.querySelector<HTMLFormElement>("#settings-form");
+  if (!form || settingsSaving) return;
+  settingsSaving = true;
+  try {
+    // A busy app drops user actions; wait for it instead of losing the change.
+    for (let i = 0; i < 200 && busy; i++) await new Promise(r => setTimeout(r, 25));
+    await run(async () => {
+      const d = new FormData(form);
+      const voicePath = String(d.get("voice-path") || "auto");
+      if (voicePath === "auto" || voicePath === "webrtc" || voicePath === "table") voice.setPath(voicePath);
+      const serviceCode = String(d.get("room-service-url") || "").trim();
+      if (form.querySelector("[name=room-service-url]") && serviceCode !== (appearance.roomServiceURL || "")) await rpc("room-service", {url: serviceCode});
+      await rpc("appearance", {
+        appearance: {
+          ...appearance,
+          localOnly: d.has("local-only"),
+          passPriceHint: d.has("pass-price-hint"),
+          poolDots: d.has("pool-dots"),
+          debug: d.has("debug-auction") || d.has("debug-play"),
+          debugAuction: d.has("debug-auction"),
+          debugPlay: d.has("debug-play"),
+          deck: String(d.get("deck")),
+          cardFrames: Object.fromEntries(decks.map(([id]) => [id, d.has(`frame-${id}`)])),
+          largeIndices: String(d.get("deck")) === "english",
+          back: String(d.get("back") || "plaid"),
+          logDisabled: !d.has("log-enabled"),
+          logPath: String(d.get("log-path") ?? appearance.logPath ?? "").trim(),
+          autoUpdate: d.has("auto-update"),
+          ntfyServers: String(d.get("ntfy-servers") || "").trim(),
+          defaultRoom: String(d.get("default-room") ?? appearance.defaultRoom ?? ""),
+        },
+      });
+    });
+  } finally {
+    settingsSaving = false;
+  }
+}
 const aiUI=new AIBotsUI(rpc,()=>void refresh());
 const aiReviewUI=new AIReviewUI(rpc,()=>void refresh());
 const debugBotUI=new DebugBotUI(rpc,c=>card(c).replace('<button','<div').replace('</button>','</div>'),option=>{
@@ -775,7 +822,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
   if (kind === "rules") $("#panel-body").innerHTML = rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), false, true) + rulesHTML;
   if (kind === "settings")
     $("#panel-body").innerHTML =
-      `<div class="settings-tabs" role="tablist" aria-label="${t("web.main.text080")}">${[["game",t("web.main.text078")],["cards",t("web.main.text077")],["connection",t("web.main.text076")],["ai",t("web.ai.tab")]].map(([id,label]) => `<button type="button" role="tab" id="settings-tab-${id}" data-settings-tab="${id}" aria-controls="settings-${id}" aria-selected="${id === "game"}">${label}</button>`).join("")}</div><form id="settings-form"><section id="settings-game" role="tabpanel" aria-labelledby="settings-tab-game"></section><section id="settings-cards" role="tabpanel" aria-labelledby="settings-tab-cards" hidden><h3>${t("web.main.text077")}</h3><div class="deck-options">${decks.map(([id, name]) => `<div class="deck-choice"><label class="deck-option"><input type="radio" name="deck" value="${id}" ${appearance.deck === id ? "checked" : ""}><span class="deck-thumb card" data-deck-thumb="${id}">${face(6, id)}</span><strong>${name}</strong></label><label class="check"><input type="checkbox" name="frame-${id}" ${appearance.cardFrames?.[id] !== false ? "checked" : ""}>${t("web.main.text079")}</label></div>`).join("")}</div><div id="deck-preview" class="deck-preview" aria-label="${t("web.main.text081")}"></div><h3>${t("web.main.text082")}</h3><div class="back-options">${backs.map(([id,name]) => `<label class="deck-option"><input type="radio" name="back" value="${id}" ${(appearance.back || "plaid") === id ? "checked" : ""}><span class="card-back back-preview" data-back="${id}"></span><strong>${name}</strong></label>`).join("")}</div></section><section id="settings-connection" role="tabpanel" aria-labelledby="settings-tab-connection" hidden><div id="service-block" hidden><h3>${t("web.connection.service_title")}</h3><p class="muted">${t("web.connection.service_help")}</p><label>${t("web.connection.service_mine")}<input id="service-code-mine" readonly spellcheck="false" placeholder="${t("web.connection.service_loading")}"></label><button type="button" id="copy-service-code">${t("web.connection.service_copy")}</button><label>${t("web.connection.service_other")}<input name="room-service-url" spellcheck="false" autocomplete="off" value="${esc(appearance.roomServiceURL || "")}" placeholder="PREF2.…"></label><p class="muted">${t("web.connection.service_other_help")}</p></div><h3>${t("web.voice.path_title")}</h3><label>${t("web.voice.path_label")}<select name="voice-path">${(["auto","webrtc","table"] as VoicePath[]).map(m => `<option value="${m}" ${voice.path === m ? "selected" : ""}>${t(`web.voice.path_${m}`)}</option>`).join("")}</select></label><p class="muted">${t("web.voice.path_help")}</p><h3>${t("web.connection.ntfy_title")}</h3><label>${t("web.connection.ntfy_label")}<input name="ntfy-servers" spellcheck="false" autocomplete="off" value="${esc(appearance.ntfyServers || "")}" placeholder="https://ntfy.sh"></label><p class="muted">${t("web.connection.ntfy_help")}</p><label class="check"><input type="checkbox" name="log-enabled" ${!appearance.logDisabled ? "checked" : ""}>${t("web.main.text088")}</label><p class="muted">${t("web.main.text089")} <code>-c</code> ${t("web.main.text090")} <code>--config</code>.</p><h3>${t("web.update.title")}</h3><label class="check"><input type="checkbox" name="auto-update" ${appearance.autoUpdate !== false ? "checked" : ""}>${t("web.update.auto")}</label><p class="muted">${t("web.update.auto_help")}</p></section><section id="settings-ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden></section><button class="primary">${t("web.main.text095")}</button></form><hr><button id="leave">${t("web.main.text096")}</button><p class="muted">${t("web.main.text097")}</p>`;
+      `<div class="settings-tabs" role="tablist" aria-label="${t("web.main.text080")}">${[["play",t("web.main.text078")],["game",t("web.settings.rules")],["cards",t("web.main.text077")],["connection",t("web.main.text076")],["ai",t("web.ai.tab")]].map(([id,label]) => `<button type="button" role="tab" id="settings-tab-${id}" data-settings-tab="${id}" aria-controls="settings-${id}" aria-selected="${id === "play"}">${label}</button>`).join("")}</div><form id="settings-form"><section id="settings-play" role="tabpanel" aria-labelledby="settings-tab-play"></section><section id="settings-game" role="tabpanel" aria-labelledby="settings-tab-game" hidden></section><section id="settings-cards" role="tabpanel" aria-labelledby="settings-tab-cards" hidden><h3>${t("web.main.text077")}</h3><div class="deck-options">${decks.map(([id, name]) => `<div class="deck-choice"><label class="deck-option"><input type="radio" name="deck" value="${id}" ${appearance.deck === id ? "checked" : ""}><span class="deck-thumb card" data-deck-thumb="${id}">${face(6, id)}</span><strong>${name}</strong></label><label class="check"><input type="checkbox" name="frame-${id}" ${appearance.cardFrames?.[id] !== false ? "checked" : ""}>${t("web.main.text079")}</label></div>`).join("")}</div><div id="deck-preview" class="deck-preview" aria-label="${t("web.main.text081")}"></div><h3>${t("web.main.text082")}</h3><div class="back-options">${backs.map(([id,name]) => `<label class="deck-option"><input type="radio" name="back" value="${id}" ${(appearance.back || "plaid") === id ? "checked" : ""}><span class="card-back back-preview" data-back="${id}"></span><strong>${name}</strong></label>`).join("")}</div></section><section id="settings-connection" role="tabpanel" aria-labelledby="settings-tab-connection" hidden><div id="service-block" hidden><h3>${t("web.connection.service_title")}</h3><p class="muted">${t("web.connection.service_help")}</p><label>${t("web.connection.service_mine")}<input id="service-code-mine" readonly spellcheck="false" placeholder="${t("web.connection.service_loading")}"></label><button type="button" id="copy-service-code">${t("web.connection.service_copy")}</button><label>${t("web.connection.service_other")}<input name="room-service-url" spellcheck="false" autocomplete="off" value="${esc(appearance.roomServiceURL || "")}" placeholder="PREF2.…"></label><p class="muted">${t("web.connection.service_other_help")}</p></div><h3>${t("web.voice.path_title")}</h3><label>${t("web.voice.path_label")}<select name="voice-path">${(["auto","webrtc","table"] as VoicePath[]).map(m => `<option value="${m}" ${voice.path === m ? "selected" : ""}>${t(`web.voice.path_${m}`)}</option>`).join("")}</select></label><p class="muted">${t("web.voice.path_help")}</p><h3>${t("web.connection.ntfy_title")}</h3><label>${t("web.connection.ntfy_label")}<input name="ntfy-servers" spellcheck="false" autocomplete="off" value="${esc(appearance.ntfyServers || "")}" placeholder="https://ntfy.sh"></label><p class="muted">${t("web.connection.ntfy_help")}</p><label class="check"><input type="checkbox" name="log-enabled" ${!appearance.logDisabled ? "checked" : ""}>${t("web.main.text088")}</label><p class="muted">${t("web.main.text089")} <code>-c</code> ${t("web.main.text090")} <code>--config</code>.</p><h3>${t("web.update.title")}</h3><label class="check"><input type="checkbox" name="auto-update" ${appearance.autoUpdate !== false ? "checked" : ""}>${t("web.update.auto")}</label><p class="muted">${t("web.update.auto_help")}</p></section><section id="settings-ai" role="tabpanel" aria-labelledby="settings-tab-ai" hidden></section><button class="primary" hidden>${t("web.main.text095")}</button></form>`;
   if (kind === "settings") {
     if(status.aiEnabled !== false) void aiUI.mount($("#settings-ai"), appearance.updateURL || "",!!appearance.debug);
     else { document.querySelector("#settings-tab-ai")?.remove(); document.querySelector("#settings-ai")?.remove(); }
@@ -796,12 +843,9 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
     }
     if(status.roomMode && !status.roomLocal){$('#settings-connection').insertAdjacentHTML('afterbegin',`<label>${t("web.main.text070")}<select name="default-room"><option value="">${t("web.main.text071")}</option></select></label>`);void roomUI.settings(appearance.defaultRoom || '');}
     $("#settings-game").insertAdjacentHTML("afterbegin", `<section class="conventions"><div class="variant-tabs" role="tablist" aria-label="${t("web.main.text068")}"><button id="tab-leningrad" role="tab" aria-selected="true" aria-controls="leningrad-settings">${t("web.main.text069")}</button>${[t("web.main.text067"),t("web.main.text066"),t("web.main.text065")].map(name => `<button role="tab" aria-selected="false" disabled title="${t("web.main.text063")}">${name}<small>${t("web.main.text064")}</small></button>`).join("")}</div><div id="leningrad-settings" role="tabpanel" aria-labelledby="tab-leningrad">${rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), !v || (status.host && v.stage==='lobby'))}</div></section>`);
-    $("#leave").setAttribute("type", "button");
-    $("#settings-game").append($("#leave"), $("#leave").nextElementSibling!);
     $("#tab-leningrad").setAttribute("type", "button");
-    $("#settings-game").insertAdjacentHTML("afterbegin",`<div class="debug-settings"><strong>${t("web.debug.setting")}:</strong><label class="check"><input type="checkbox" name="debug-auction" ${debugAuction() ? "checked" : ""}>${t("web.debug.auction")}</label><label class="check"><input type="checkbox" name="debug-play" ${debugPlay() ? "checked" : ""}>${t("web.debug.play")}</label></div>`);
-    $("#settings-game").insertAdjacentHTML("afterbegin", `<label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label>`);
-    $('#settings-game').insertAdjacentHTML('afterbegin',`<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label>`);
+        $("#settings-play").innerHTML = `<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label><label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label><label class="check"><input type="checkbox" name="pool-dots" ${appearance.poolDots !== false ? "checked" : ""}>${t("web.settings.pool_dots")}</label>`;
+    $("#settings-play").insertAdjacentHTML("beforeend",`<div class="debug-settings"><strong>${t("web.debug.setting")}:</strong><label class="check"><input type="checkbox" name="debug-auction" ${debugAuction() ? "checked" : ""}>${t("web.debug.auction")}</label><label class="check"><input type="checkbox" name="debug-play" ${debugPlay() ? "checked" : ""}>${t("web.debug.play")}</label></div>`);
     previewDeck();
     $("#panel-body").insertAdjacentHTML("beforeend", `<p class="about-line">${esc(t("web.about.line", {p0: appVersion}))}</p>`);
   }
@@ -980,7 +1024,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.historyId) void run(async () => {
     const result = await rpc<View>("history-result", {id:b.dataset.historyId});
     showPanel("history-result", result);
-    $('#panel-body').innerHTML = `<button type="button" id="history-back" aria-label="${t("web.history.back")}">← ${t("web.history.back")}</button>${partyDates(result)}<div class="history-pool">${poolDrawing(result, esc)}</div>`;
+    $('#panel-body').innerHTML = `<button type="button" id="history-back" aria-label="${t("web.history.back")}">← ${t("web.history.back")}</button>${partyDates(result)}<div class="history-pool">${poolDrawing(result, esc, {dots: appearance.poolDots !== false})}</div>`;
     const drawing = $('#panel-body .pool-drawing');
     const staticDrawing = document.createElement('div');
     staticDrawing.className = drawing.className;
@@ -1053,7 +1097,7 @@ document.addEventListener("click", (e) => {
       previous = "";
       $("#app").innerHTML = "";
     });
-  if (b.id === "leave" || b.id === "finish-party" || b.id === "finish-party-topbar")
+  if (b.id === "finish-party" || b.id === "finish-party-topbar")
     void run(finishParty);
 });
 document.addEventListener("submit", (e) => {
@@ -1099,6 +1143,7 @@ document.addEventListener("submit", (e) => {
           debugAuction: d.has("debug-auction"),
           debugPlay: d.has("debug-play"),
           passPriceHint: d.has("pass-price-hint"),
+          poolDots: d.has("pool-dots"),
           localOnly: d.has('local-only'),
           tableRules,
           deck: String(d.get("deck")),
@@ -1158,9 +1203,8 @@ document.addEventListener("change", (e) => {
   if (el.name === "deck" || el.name.startsWith("frame-")) previewDeck();
 });
 function updateExitButtons() {
-  for (const button of document.querySelectorAll<HTMLButtonElement>('#finish-party, #finish-party-topbar, #leave')) {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('#finish-party, #finish-party-topbar')) {
     button.textContent = status.host ? t("web.main.text004") : t("web.main.text003");
-    if (button.id === 'leave') button.hidden = !status.current;
   }
 }
 let voiceRoomKeep: ReturnType<typeof roomVoice> = null;

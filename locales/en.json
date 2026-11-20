@@ -289,8 +289,6 @@
   "web.main.text089": "Android stores the log in the app folder. On Windows the log goes to the data folder by default; you can set a path by starting with",
   "web.main.text090": "or",
   "web.main.text095": "Save",
-  "web.main.text096": "Close table and return home",
-  "web.main.text097": "Accepted moves are already saved.",
   "web.main.text098": "Misère",
   "web.main.text099": "All-pass",
   "web.main.text100": "Normal game",
@@ -860,5 +858,7 @@
 "web.teeth.title": "Tooth on {p0}",
 "web.teeth.current": "Teeth now: {p0}",
 "web.teeth.add_one": "Add a tooth",
-"web.teeth.remove_one": "Remove a tooth"
+"web.teeth.remove_one": "Remove a tooth",
+"web.settings.rules": "Rules",
+"web.settings.pool_dots": "Pool and mountain with dots"
 }
