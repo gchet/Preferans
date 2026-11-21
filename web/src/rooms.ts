@@ -4,7 +4,7 @@ import {confirmDialog} from './confirm-dialog';
 import {roomsTable} from './rooms-table';
 export interface RoomParty {id:string;host:string;players:{id:string;name:string;bot:boolean}[];stage:string;round:number;startedAt:number;finishedAt:number;updatedAt:number}
 export interface Room {id:string;name:string;creator?:string;creatorName?:string;created?:number;parties?:RoomParty[];members:{id:string;name:string;slot:number;online:boolean}[];table?:{id:string;host:string;name:string;players:string[];bots:boolean[]}}
-export interface RoomStatus {roomMode?:boolean;roomLocal?:boolean;appearance?:{localOnly?:boolean};room?:Room;roomSelf?:string;roomError?:string;roomOnline?:boolean;roomGathering?:boolean;current?:boolean;connected?:boolean[];view?:{id:string;seat:number}|null}
+export interface RoomStatus {roomMode?:boolean;roomLocal?:boolean;appearance?:{localOnly?:boolean};room?:Room;roomSelf?:string;roomError?:string;roomOnline?:boolean;roomGathering?:boolean;roomWait?:string;roomWaitSec?:number;current?:boolean;connected?:boolean[];view?:{id:string;seat:number}|null}
 type RPC=<T=unknown>(action:string,params?:Record<string,unknown>)=>Promise<T>;
 const esc=(v:string)=>v.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export class RoomUI {
@@ -29,6 +29,7 @@ export class RoomUI {
           const player=(document.querySelector('#room-player-name') as HTMLInputElement).value;
           await this.rpc('profile',{name:player});await this.rpc('room-enter',{id});
         }else if(op==='exit'){await this.rpc('room-exit');}
+        else if(op==='skip-wait'){await this.rpc('room-skip-wait');}
         else if(op==='rejoin'){
           if(this.rejoining)return;
           this.rejoining=this.status().room?.table?.id || '';this.paint();
@@ -96,11 +97,15 @@ export class RoomUI {
     if(this.rejoining && (r?.table?.id!==this.rejoining || (s.view?.id===this.rejoining && !!s.connected?.[s.view.seat] && !!s.connected?.[0])))this.rejoining='';
     if(!r){if(document.querySelector('#room-picker')){if(Date.now()-this.lastLoad>5000)void this.load();const el=document.querySelector('#room-connection-error');if(el)el.textContent=s.roomError || '';}return;}
     const box=document.querySelector('#room-roster');if(!box)return;
-    const key=JSON.stringify([r.id,r.name,s.roomSelf,r.table,r.members.map(m=>[m.id,m.name,m.slot,m.online]),s.roomOnline,s.roomGathering,s.roomError,s.current,s.view?.id,this.rejoining]);
-    if(this.rosterKey===key&&box.childElementCount)return;this.rosterKey=key;
+    const key=JSON.stringify([r.id,r.name,s.roomSelf,r.table,r.members.map(m=>[m.id,m.name,m.slot,m.online]),s.roomOnline,s.roomGathering,s.roomWait,s.roomError,s.current,s.view?.id,this.rejoining]);
+    const tick=()=>{for(const el of box.querySelectorAll<HTMLElement>(".room-wait-timer"))el.textContent=t("web.rooms.wait_timer",{p0:String(s.roomWaitSec??0)});};
+    if(this.rosterKey===key&&box.childElementCount){tick();return;}this.rosterKey=key;
     const members=[...r.members].sort((a,b)=>Number(b.id===s.roomSelf)-Number(a.id===s.roomSelf));
-    const gather=s.roomGathering&&!s.roomLocal?`<p id="room-gathering" aria-live="polite"><span class="connection-spinner" aria-hidden="true"></span>${t("web.rooms.gathering")}</p>`:"";
-    box.innerHTML=`<div class="room-heading"><button type="button" data-room-action="exit">${t("web.rooms.text006")}</button></div><div class="room-members">${members.map(m=>`<div class="room-member ${m.online?'':'connection-lost'}"><span class="room-member-label"><strong>${esc(m.name)}</strong>${m.id===s.roomSelf?` ${t("web.rooms.text001")} <em>${esc(r.name)}</em>`:''}</span>${s.roomLocal?'':voiceIcon(m.slot,m.id===s.roomSelf)}${m.online?'':`<small>${t("web.main.text197")}</small>`}</div>`).join('')}</div>${gather}<p role="status">${s.roomLocal?t('web.local.hint'):s.roomError&&!this.rejoining?esc(s.roomError):!s.roomOnline&&!this.rejoining?t("web.rooms.text005"):r.table?`${this.rejoining && (s.roomError || !s.roomOnline) ? esc(s.roomError || t("web.rooms.text005")) + " " : ""}${t("web.rooms.text003", {p0: esc(r.table.name)})} <button type="button" data-room-action="rejoin" ${this.rejoining ? "disabled aria-busy=\"true\"" : ""}>${this.rejoining ? `<span class="connection-spinner" aria-hidden="true"></span>${t("web.connection.rejoining")}` : t("web.rooms.text004")}</button>`:t("web.rooms.text002")}</p>`;
+    const skip=`<button type="button" class="room-skip-wait" data-room-action="skip-wait" title="${esc(t("web.rooms.skip_wait_hint"))}">${t("web.rooms.skip_wait")}</button>`;
+    const timer=`<span class="room-wait-timer"></span>`;
+    const gather=s.roomGathering&&!s.roomLocal?`<p id="room-gathering" aria-live="polite"><span class="connection-spinner" aria-hidden="true"></span>${t("web.rooms.gathering")} ${timer} ${skip}</p>`:"";
+    box.innerHTML=`<div class="room-heading"><button type="button" data-room-action="exit">${t("web.rooms.text006")}</button></div><div class="room-members">${members.map(m=>`<div class="room-member ${m.online?'':'connection-lost'}"><span class="room-member-label"><strong>${esc(m.name)}</strong>${m.id===s.roomSelf?` ${t("web.rooms.text001")} <em>${esc(r.name)}</em>`:''}</span>${s.roomLocal?'':voiceIcon(m.slot,m.id===s.roomSelf)}${m.online?'':`<small>${t("web.main.text197")}</small>`}</div>`).join('')}</div>${gather}<p role="status">${s.roomLocal?t('web.local.hint'):s.roomError&&!this.rejoining?esc(s.roomError):!s.roomOnline&&!this.rejoining?`${t("web.rooms.text005")} ${timer} ${skip}`:r.table?`${this.rejoining && (s.roomError || !s.roomOnline) ? esc(s.roomError || t("web.rooms.text005")) + " " : ""}${t("web.rooms.text003", {p0: esc(r.table.name)})} <button type="button" data-room-action="rejoin" ${this.rejoining ? "disabled aria-busy=\"true\"" : ""}>${this.rejoining ? `<span class="connection-spinner" aria-hidden="true"></span>${t("web.connection.rejoining")}` : t("web.rooms.text004")}</button>`:t("web.rooms.text002")}</p>`;
+    tick();
     const exit=box.querySelector<HTMLButtonElement>('[data-room-action="exit"]');
     if(exit)exit.hidden=!!s.appearance?.localOnly;
     for(const el of document.querySelectorAll<HTMLButtonElement>('#create-form button[type="submit"],#resume-save'))el.disabled=!!r.table||!!s.roomGathering;

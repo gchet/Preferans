@@ -146,6 +146,8 @@ func (a *App) RPC(r Request) (any, error) {
 		return nil, a.EnterRoom(localRoomID)
 	case "room-exit":
 		return nil, a.ExitRoom()
+	case "room-skip-wait":
+		return nil, a.SkipRoomWait()
 	case "room-rejoin":
 		a.mu.Lock()
 		a.rooms.config.OptOut = ""

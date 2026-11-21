@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"preferans/config"
 	"strings"
 	"time"
 
@@ -44,6 +45,9 @@ func (a *App) gatheringLocked() bool {
 	if !a.lobbyEnabled || a.appearance.RoomServiceURL != "" || cur == "" || cur == localRoomID {
 		return false
 	}
+	if a.lobbySkipWait {
+		return false
+	}
 	if a.lobbyUnsettled {
 		return true
 	}
@@ -58,6 +62,56 @@ func (a *App) setLobbyReady() {
 	if changed {
 		a.lobbyLog("лобби: сбор игроков завершён")
 	}
+}
+
+// roomWaitLocked описывает ожидание, которое видит игрок на экране комнаты: «gathering» — идёт сбор игроков,
+// «offline» — нет связи с сервисом комнат; вторым значением — сколько секунд оно длится.
+func (a *App) roomWaitLocked(gathering, online bool) (string, int) {
+	if a.rooms.config.Current == "" || a.rooms.config.Current == localRoomID {
+		return "", 0
+	}
+	var kind string
+	var since time.Time
+	switch {
+	case gathering:
+		kind, since = "gathering", a.lobbyGatherSince
+		if a.lobbyUnsettled && !a.lobbyUnsettledSince.IsZero() {
+			since = a.lobbyUnsettledSince
+		}
+	case !online:
+		kind, since = "offline", a.rooms.seen
+		if since.IsZero() {
+			since = a.lobbyStart
+		}
+	default:
+		return "", 0
+	}
+	if since.IsZero() {
+		return kind, 0
+	}
+	return kind, max(0, int(time.Since(since).Seconds()))
+}
+
+// SkipRoomWait прерывает ожидание сбора игроков и связи с сервисом комнат: игрок знает, что договорился с остальными
+// о нужной комнате другим способом. Стол можно создать сразу, даже если часть живых игроков этому устройству недоступна
+// (пока не сменится комната или все не станут доступны). Если сервис комнат не отвечает, это устройство берёт сервис на
+// себя (как при недоступности ведущего), и комната остаётся в его каталоге.
+func (a *App) SkipRoomWait() error {
+	a.mu.Lock()
+	if a.rooms.config.Current == "" || a.rooms.config.Current == localRoomID {
+		a.mu.Unlock()
+		return nil
+	}
+	a.lobbySkipWait = true
+	offline := time.Since(a.rooms.seen) >= time.Duration(config.Interface.RoomOnlineTimeoutMs)*time.Millisecond
+	following := a.lobbyEnabled && a.appearance.RoomServiceURL == "" && a.lobbyHost != ""
+	a.mu.Unlock()
+	a.p2pLog("лобби: игрок прервал ожидание сервиса комнат")
+	if offline && following {
+		a.applyLobbyService("", "")
+	}
+	go a.roomTick()
+	return nil
 }
 
 // EnableLobby включает публичное лобби: игроки ничего не вводят. Устройство читает общую тему ntfy,
@@ -226,6 +280,13 @@ func (a *App) setLobbyUnsettled(v bool) {
 	a.mu.Lock()
 	changed := a.lobbyUnsettled != v
 	a.lobbyUnsettled = v
+	if changed {
+		if v {
+			a.lobbyUnsettledSince = time.Now()
+		} else {
+			a.lobbySkipWait = false // все живые игроки снова доступны: обычный порядок
+		}
+	}
 	a.mu.Unlock()
 	if v {
 		a.lobbyRetry++

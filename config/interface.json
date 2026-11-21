@@ -89,7 +89,7 @@
   "adminRefreshIntervalMs": 5000,
   "roomOnlineTimeoutMs": 12000,
   "heartbeatIntervalMs": 1000,
-  "connectionSilenceTimeoutMs": 10000,
+  "connectionSilenceTimeoutMs": 25000,
   "reconnectRetryMs": 2000,
   "handshakeRetryMs": 50000,
   "answerRetryMs": 12000,

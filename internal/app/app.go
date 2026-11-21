@@ -120,6 +120,9 @@ type App struct {
 	lobbyStart       time.Time      // под a.mu: когда включено лобби (запуск приложения)
 	lobbyReady       bool           // под a.mu: лобби определило ведущего после запуска или смены сети
 	lobbyGatherSince time.Time      // под a.mu: с какого момента идёт сбор игроков (для предела ожидания)
+	lobbyUnsettledSince time.Time   // под a.mu: с какого момента часть живых игроков недоступна этому устройству
+	lobbySkipWait    bool           // под a.mu: игрок прервал ожидание сбора и сервиса комнат; сбрасывается при смене комнаты
+	netKind          string         // под a.mu: тип сети, о котором сообщила оболочка (Android), для журнала
 	lobbyBlockedTill time.Time      // только горутина лобби: до этого момента объявления не публикуются (ntfy ответил 429)
 	lobbySyncing     atomic.Bool    // идёт фоновый обмен каталогами с остальными кандидатами
 	appearance        Appearance
@@ -141,6 +144,8 @@ type Status struct {
 	RoomError         string         `json:"roomError"`
 	RoomOnline        bool           `json:"roomOnline"`
 	RoomGathering      bool           `json:"roomGathering"`
+	RoomWait           string         `json:"roomWait"`
+	RoomWaitSec        int            `json:"roomWaitSec"`
 	FreeSeats         int            `json:"freeSeats"`
 	Current           bool           `json:"current"`
 	View              *game.View     `json:"view"`
@@ -253,7 +258,7 @@ func (a *App) enableLogFile(path string) error {
 	}
 	old := a.logFile
 	a.logFile = f
-	a.logLocked(locales.Text("go.internal.app.app.text004"), runtime.GOOS, runtime.GOARCH, "libp2p")
+	a.logLocked(locales.Text("go.internal.app.app.text004"), Version, runtime.GOOS, runtime.GOARCH, "libp2p")
 	a.logZoneLocked()
 	a.mu.Unlock()
 	if old != nil {
@@ -347,6 +352,7 @@ func (a *App) statusLocked() Status {
 	if s.RoomLocal {
 		s.RoomOnline = true
 	}
+	s.RoomWait, s.RoomWaitSec = a.roomWaitLocked(s.RoomGathering, s.RoomOnline)
 	s.Logs = append([]string(nil), a.logs...)
 	s.FreeSeats = len(a.freeSeatsLocked())
 	if a.saved.State != nil {

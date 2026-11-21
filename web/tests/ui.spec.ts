@@ -1298,6 +1298,30 @@ test('rooms: rejoin indicator persists until authenticated connection',async({pa
   await expect(page.locator('.connection-spinner')).toHaveCount(0);
 });
 
+test('rooms: waiting message shows a timer and can be skipped',async({page})=>{
+  let skipped=0,wait='offline',sec=17;
+  await page.route('**/api',async route=>{
+    const q=route.request().postDataJSON();
+    if(q.action==='room-skip-wait'){skipped++;wait='';return route.fulfill({json:{data:null}});}
+    if(q.action.startsWith('voice-'))return route.fulfill({json:{data:q.action==='voice-poll'?[]:null}});
+    const response=await route.fetch(),body=await response.json();
+    if(q.action==='status')Object.assign(body.data,{roomMode:true,connectionSetup:false,roomSelf:'me',roomOnline:wait!=='offline',roomGathering:wait==='gathering',roomWait:wait,roomWaitSec:sec,roomError:'',room:{id:'room',name:'Test',members:[{id:'me',name:'Гена',slot:0,online:true}]}});
+    await route.fulfill({response,json:body});
+  });
+  await page.goto(url);
+  const roster=page.locator('#room-roster');
+  await expect(roster).toContainText('Нет связи с сервисом комнат');
+  await expect(roster.locator('.room-wait-timer')).toHaveText('17 с');
+  sec=18;
+  await expect(roster.locator('.room-wait-timer')).toHaveText('18 с');
+  await roster.getByRole('button',{name:'Не ждать'}).click();
+  await expect.poll(()=>skipped).toBe(1);
+  await expect(roster.locator('[data-room-action="skip-wait"]')).toHaveCount(0);
+  wait='gathering';sec=5;
+  await expect(roster.locator('#room-gathering .room-wait-timer')).toHaveText('5 с');
+  await expect(roster.locator('#room-gathering [data-room-action="skip-wait"]')).toBeVisible();
+});
+
 test('rooms: directory, lobby, voice controls and default room',async({page})=>{
   await page.setViewportSize({width:1100,height:800});
   let room:any=null,defaultRoom='',catalog:any[]=[];

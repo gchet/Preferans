@@ -67,7 +67,7 @@ if ($Target -in @('All','Windows')) {
     # cgo uses Zig's external linker.  Its Windows target defaults to the
     # Console subsystem, so explicitly request the GUI subsystem as well as
     # the Go linker's setting; otherwise Explorer opens a console window.
-    $linkFlags = '-H windowsgui -extldflags=-Wl,--subsystem,windows'
+    $linkFlags = '-H windowsgui -extldflags=-Wl,--subsystem,windows -X preferans/internal/app.Version=' + $VersionName
     if ($mingwBin) {
         # GCC сам ставит -mwindows для windowsgui; -static вшивает libstdc++, libgcc и winpthread (без лишних DLL рядом с exe).
         $linkFlags = ($linkFlags -replace '-extldflags=\S+', '') + ' -extldflags=-static'
@@ -92,7 +92,7 @@ if ($Target -in @('All','Android')) {
         # anet v0.0.5 (Pion's Android interface discovery) uses net.zoneCache.
         $mobileTarget='android/arm64'; $androidAbi='arm64-v8a'; $apkName='Preferans.apk'
         if ($Emulator) { $mobileTarget='android/amd64'; $androidAbi='x86_64'; $apkName='Preferans-emulator.apk' }
-        & go tool gomobile bind @aiTags -target $mobileTarget -androidapi 26 -ldflags '-checklinkname=0 -s -w' -o android/app/libs/preferans.aar ./mobile; Check
+        & go tool gomobile bind @aiTags -target $mobileTarget -androidapi 26 -ldflags ("-checklinkname=0 -s -w -X preferans/internal/app.Version=$VersionName") -o android/app/libs/preferans.aar ./mobile; Check
         if (!$Gradle) { $Gradle = Join-Path $PSScriptRoot 'android/gradlew.bat' }
         & $Gradle -p android "-PpreferansAbi=$androidAbi" "-PpreferansVersionCode=$VersionCode" "-PpreferansVersionName=$VersionName" assembleDebug --console=plain; Check
         Copy-Item -LiteralPath android/app/build/outputs/apk/debug/app-debug.apk -Destination (Join-Path 'dist' $apkName)

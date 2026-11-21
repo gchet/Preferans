@@ -41,6 +41,20 @@ func NetworkChanged() {
 }
 
 var current *app.App
+var pendingKind string
+var pendingValidated bool
+
+// SetNetworkKind передаёт тип основной сети Android («wifi», «cellular», «ethernet», «vpn», через «+», либо «none»)
+// и признак, что доступ в интернет подтверждён системой. Нужен только для журнала. Может прийти до Start.
+func SetNetworkKind(kind string, validated bool) {
+	mu.Lock()
+	pendingKind, pendingValidated = kind, validated
+	a := current
+	mu.Unlock()
+	if a != nil {
+		a.SetNetworkKind(kind, validated)
+	}
+}
 
 func Start(dataDir string) (string, error) {
 	mu.Lock()
@@ -63,6 +77,9 @@ func Start(dataDir string) (string, error) {
 	stop = close
 	address = url
 	current = a
+	if pendingKind != "" {
+		a.SetNetworkKind(pendingKind, pendingValidated)
+	}
 	return url, nil
 }
 func Stop() {

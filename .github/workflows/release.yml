@@ -64,7 +64,7 @@ jobs:
           export CGO_CXXFLAGS="-O2 -I$GITHUB_WORKSPACE/native/include"
           # -tags noai: релиз без встроенного ИИ (как приватные релизы). Уберите для сборки с ИИ.
           go build -tags noai -buildvcs=false -trimpath \
-            -ldflags '-H windowsgui -extldflags=-static' \
+            -ldflags "-H windowsgui -extldflags=-static -X preferans/internal/app.Version=${TAG#v}" \
             -o dist/Preferans.exe ./cmd/preferans
           ls -l dist/Preferans.exe
       - name: Check exe (GUI subsystem, no extra DLLs)
@@ -141,7 +141,7 @@ jobs:
           VERSION_CODE="$(git log -1 --format=%ct)"
           mkdir -p android/app/libs dist
           go tool gomobile bind -tags noai -target android/arm64 -androidapi 26 \
-            -ldflags '-checklinkname=0 -s -w' -o android/app/libs/preferans.aar ./mobile
+            -ldflags "-checklinkname=0 -s -w -X preferans/internal/app.Version=$VERSION_NAME" -o android/app/libs/preferans.aar ./mobile
           bash android/gradlew -p android -PpreferansAbi=arm64-v8a \
             "-PpreferansVersionCode=$VERSION_CODE" "-PpreferansVersionName=$VERSION_NAME" \
             assembleDebug --console=plain

@@ -16,6 +16,7 @@ import android.media.MediaScannerConnection
 import android.content.pm.ApplicationInfo
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
@@ -381,11 +382,26 @@ class MainActivity : Activity() {
         // После блокировки экрана сокеты могли умереть: проверяем соединения и сбрасываем штрафы повторных попыток.
         Mobile.networkChanged()
     }
+    // Тип основной сети (Wi-Fi, мобильная, ...) нужен только журналу: по нему видно, что телефон ушёл с домашней Wi-Fi.
+    private fun reportNetworkKind(cm: ConnectivityManager, network: Network) {
+        try {
+            val caps = cm.getNetworkCapabilities(network) ?: return
+            val kinds = ArrayList<String>()
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) kinds.add("wifi")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) kinds.add("cellular")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) kinds.add("ethernet")
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) kinds.add("vpn")
+            if (kinds.isEmpty()) kinds.add("other")
+            Mobile.setNetworkKind(kinds.joinToString("+"), caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+        } catch (_: Exception) {}
+    }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private fun watchNetwork() {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { Mobile.networkChanged() }
+            override fun onAvailable(network: Network) { reportNetworkKind(cm, network); Mobile.networkChanged() }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { reportNetworkKind(cm, network) }
+            override fun onLost(network: Network) { try { Mobile.setNetworkKind("none", false) } catch (_: Exception) {} }
         }
         try { cm.registerDefaultNetworkCallback(callback); networkCallback = callback } catch (_: Exception) {}
     }

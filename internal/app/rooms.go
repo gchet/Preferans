@@ -121,7 +121,7 @@ func (a *App) roomRequest(q rooms.Request) (rooms.Response, error) {
 	}
 	if q.Op == "create" {
 		a.mu.Lock()
-		unsettled := a.lobbyUnsettled
+		unsettled := a.lobbyUnsettled && !a.lobbySkipWait
 		a.mu.Unlock()
 		if unsettled {
 			return rooms.Response{}, locales.Errorf("go.rooms.lobby_unsettled")
@@ -177,6 +177,7 @@ func (a *App) EnterRoom(id string) error {
 		defer a.mu.Unlock()
 		previous := a.rooms.config
 		a.rooms.config.Current, a.rooms.config.Table, a.rooms.config.OptOut = localRoomID, "", ""
+		a.lobbySkipWait = false
 		if err := a.config.Save("room-session", a.rooms.config); err != nil {
 			a.rooms.config = previous
 			return err
@@ -202,6 +203,7 @@ func (a *App) EnterRoom(id string) error {
 	a.rooms.offer = nil
 	a.rooms.config.Current = id
 	a.rooms.config.OptOut = ""
+	a.lobbySkipWait = false
 	a.rooms.room = out.Room
 	a.rooms.cursor = out.Cursor
 	a.rooms.epoch = out.Epoch
@@ -231,6 +233,7 @@ func (a *App) ExitRoom() error {
 	a.rooms.generation++
 	a.rooms.config.Current = ""
 	a.rooms.config.Table = ""
+	a.lobbySkipWait = false
 	a.rooms.room = nil
 	a.rooms.err = ""
 	a.voiceQueue = nil
