@@ -11,6 +11,8 @@ interface Window {
     getVersionCode(): number;
     setLanguage?(language: string): void;
     setKeepAlive?(on: boolean): void;
+    setVoiceMode?(on: boolean): void;
+    audioInfo?(): string;
     getVersionName(): string;
     installUpdate(url: string, sha256: string): void;
   };

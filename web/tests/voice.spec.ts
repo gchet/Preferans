@@ -34,6 +34,11 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
         const capture=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
         navigator.mediaDevices.getUserMedia=async constraints=>{const s=await capture(constraints);(window as any).__tracks.push(...s.getTracks());return s;};
       });
+      // у первого игрока оболочка «Android»: она должна получить фиксированный звуковой режим и писать состояние звука в журнал
+      if(i===0)await context.addInitScript(() => {
+        (window as any).__voiceModes=[];
+        (window as any).PreferansAndroid={setVoiceMode:(on:boolean)=>{(window as any).__voiceModes.push(on);},audioInfo:()=>'режим=связь, тест'};
+      });
       const page=await context.newPage();
       await page.route('**/*',async route=>{
         const u=new URL(route.request().url());
@@ -93,6 +98,8 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     const voiceLines=async()=>((await rpc(0,'status')).logs as string[]).filter(l=>l.includes('голос:')||l.includes('voice:'));
     await expect.poll(async()=>(await voiceLines()).some(l=>/connected/.test(l)),{timeout:30000}).toBeTruthy();
     expect((await voiceLines()).join('\n')).not.toMatch(/\d+\.\d+\.\d+\.\d+/);
+    await expect.poll(()=>host.evaluate(()=>(window as any).__voiceModes),{timeout:30000}).toContain(true);
+    await expect.poll(async()=>((await rpc(0,'status')).logs as string[]).some(l=>l.includes('звук Android')),{timeout:30000}).toBeTruthy();
     const mutedAudio=()=>host.locator('[data-voice-audio]').evaluateAll(nodes=>nodes.map(n=>({seat:(n as HTMLElement).dataset.voiceAudio,muted:(n as HTMLAudioElement).muted})).sort((a,b)=>Number(a.seat)-Number(b.seat)));
     await expect(host.locator('[data-speaker]')).toHaveCount(3);
     await expect.poll(mutedAudio).toEqual([{seat:'1',muted:false},{seat:'2',muted:false}]);

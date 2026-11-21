@@ -40,6 +40,10 @@ export class VoiceChat {
   private micBusy = false;
   private heartbeat = 0;
   private soundEnabled = true;
+  private androidAudio = false;
+  private audioOffAt = 0;
+  private lastAudioLog = "";
+  private lastAudioAt = 0;
   private mutedPlayers = new Set<string>();
   private resumeMic?: {roomId: string; seat: number};
   private restoreMicrophone = false;
@@ -59,6 +63,30 @@ export class VoiceChat {
   private log(message: string) {
     this.logBuf.push(message);
     if (!this.logTimer) this.logTimer = window.setTimeout(() => this.flushLog(), 1500);
+  }
+  // Android: пока рядом есть собеседник или включён микрофон, держим фиксированный звуковой режим (см. MainActivity.applyVoiceMode).
+  private syncAudioMode(room: Room | null) {
+    const api = window.PreferansAndroid;
+    if (!api?.setVoiceMode) return;
+    const humans = !!room && room.players.some((p, i) => i !== room.seat && p?.bot === false && !!this.connected[i]);
+    const want = humans || !!this.stream;
+    if (want) this.audioOffAt = 0;
+    else if (this.androidAudio && room) {
+      if (!this.audioOffAt) this.audioOffAt = Date.now();
+      if (Date.now() - this.audioOffAt < 30000) return;
+    }
+    if (want === this.androidAudio) return;
+    this.androidAudio = want;
+    api.setVoiceMode(want);
+    this.audioLog(want ? "голосовой режим включён" : "голосовой режим выключен");
+  }
+  private audioLog(why: string) {
+    const info = window.PreferansAndroid?.audioInfo?.();
+    if (!info) return;
+    const text = `звук Android (${why}): ${info}`, now = Date.now();
+    if (text === this.lastAudioLog && now - this.lastAudioAt < 10000) return;
+    this.lastAudioLog = text; this.lastAudioAt = now;
+    this.log(text);
   }
   private flushLog() {
     this.logTimer = 0;
@@ -204,6 +232,7 @@ export class VoiceChat {
     }
     this.room = room;
     this.connected = status.connected || [];
+    this.syncAudioMode(room);
     if (this.resumeMic && room && (room.id !== this.resumeMic.roomId || room.seat !== this.resumeMic.seat)) this.resumeMic = undefined;
     if (this.resumeMic && room?.id === this.resumeMic.roomId && room.seat === this.resumeMic.seat) {
       this.resumeMic = undefined;
@@ -347,7 +376,7 @@ export class VoiceChat {
       if (st === 'connected') wasConnected = true;
       if (peer.pc !== pc || !verbose() && !wasConnected) return;
       state('связь');
-      if (st === 'connected' || st === 'failed' || st === 'disconnected') void this.pairInfo(pc).then(info => { if (peer.pc === pc) this.log(`место ${seat + 1}: ${st}: ${info.text}`); });
+      if (st === 'connected' || st === 'failed' || st === 'disconnected') void this.pairInfo(pc).then(info => { if (peer.pc === pc) { this.log(`место ${seat + 1}: ${st}: ${info.text}`); this.audioLog(`место ${seat + 1}: ${st}`); } });
     };
     return pc;
   }
@@ -381,6 +410,8 @@ export class VoiceChat {
       if (session !== this.session || !this.room || document.hidden) { stream.getTracks().forEach(t => t.stop()); return; }
       this.stream = stream;
       this.log('микрофон включён');
+      this.audioLog('микрофон включён');
+      window.setTimeout(() => this.audioLog('микрофон включён, через 3 с'), 3000);
       const track = stream.getAudioTracks()[0];
       track.onended = () => {
         if (this.stream?.getAudioTracks().includes(track)) {
@@ -402,7 +433,10 @@ export class VoiceChat {
   }
   private async mute() {
     const stream = this.stream; this.stream = undefined;
-    if (stream) this.log('микрофон выключен');
+    if (stream) {
+      this.log('микрофон выключен');
+      window.setTimeout(() => this.audioLog('микрофон выключен, через 3 с'), 3000);
+    }
     stream?.getTracks().forEach(t => t.stop());
     this.relay.stopCapture();
     await Promise.all([...this.peers.values()].map(p => p.sender?.replaceTrack(null).catch(() => {})));

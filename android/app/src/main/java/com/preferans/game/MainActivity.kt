@@ -20,6 +20,11 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.provider.Settings
 import android.webkit.ValueCallback
 import android.webkit.JavascriptInterface
@@ -124,6 +129,12 @@ class MainActivity : Activity() {
                 @JavascriptInterface fun setKeepAlive(on: Boolean) {
                     runOnUiThread { if (on) startKeepAlive() else stopKeepAlive() }
                 }
+                // Фиксированный звуковой режим на время голосовой связи: громкость собеседников не прыгает при включении и выключении микрофона.
+                @JavascriptInterface fun setVoiceMode(on: Boolean) {
+                    runOnUiThread { applyVoiceMode(on) }
+                }
+                // Состояние звука для журнала: режим, маршрут, громкости каналов.
+                @JavascriptInterface fun audioInfo(): String = describeAudio()
                 @JavascriptInterface fun getVersionCode(): Int = BuildConfig.VERSION_CODE
                 @JavascriptInterface fun getVersionName(): String = BuildConfig.VERSION_NAME
                 // Обновление с GitHub: адрес и SHA-256 приходят из приложения (оно читает их из выпуска на GitHub).
@@ -186,6 +197,93 @@ class MainActivity : Activity() {
             setContentView(TextView(this).apply { text = text("android.start.failed", e.message); setPadding(24, 48, 24, 24) })
         }
     }
+    // Пока микрофон включён, WebView переводит звук Android в режим связи (громкость канала «голосовой вызов», эхоподавление),
+    // а после выключения возвращает обычный: тот же собеседник звучит то тише, то громче. Поэтому на время голосовой связи
+    // режим связи и динамик держим сами и возвращаем, если WebView его сбросил.
+    @Volatile private var voiceModeOn = false
+    private var voiceModeSaved = AudioManager.MODE_NORMAL
+    private var voiceModeFixes = 0
+    private val audioHandler = Handler(Looper.getMainLooper())
+    private val audioGuard = object : Runnable {
+        override fun run() {
+            if (!voiceModeOn) return
+            val am = getSystemService(AUDIO_SERVICE) as AudioManager
+            if (am.mode != AudioManager.MODE_IN_COMMUNICATION) {
+                am.mode = AudioManager.MODE_IN_COMMUNICATION
+                voiceModeFixes++
+                routeVoice(am)
+            }
+            audioHandler.postDelayed(this, 2000)
+        }
+    }
+    private val audioDevices = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) { if (voiceModeOn) routeVoice(getSystemService(AUDIO_SERVICE) as AudioManager) }
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) { if (voiceModeOn) routeVoice(getSystemService(AUDIO_SERVICE) as AudioManager) }
+    }
+    private fun hasHeadset(am: AudioManager): Boolean = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+        it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+            it.type == AudioDeviceInfo.TYPE_USB_HEADSET || it.type == 26 // 26 = BLE-гарнитура (API 31)
+    }
+    // С наушниками или гарнитурой маршрут выбирает система, иначе звук идёт в динамик, а не в разговорный.
+    private fun routeVoice(am: AudioManager) {
+        try {
+            val headset = hasHeadset(am)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (headset) am.clearCommunicationDevice()
+                else am.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }?.let { am.setCommunicationDevice(it) }
+            } else {
+                @Suppress("DEPRECATION") run { am.isSpeakerphoneOn = !headset }
+            }
+        } catch (_: Exception) {}
+    }
+    private fun applyVoiceMode(on: Boolean) {
+        if (on == voiceModeOn) return
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        voiceModeOn = on
+        try {
+            if (on) {
+                voiceModeSaved = am.mode
+                am.mode = AudioManager.MODE_IN_COMMUNICATION
+                routeVoice(am)
+                am.registerAudioDeviceCallback(audioDevices, audioHandler)
+                audioHandler.postDelayed(audioGuard, 2000)
+            } else {
+                audioHandler.removeCallbacks(audioGuard)
+                am.unregisterAudioDeviceCallback(audioDevices)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.clearCommunicationDevice()
+                else @Suppress("DEPRECATION") run { am.isSpeakerphoneOn = false }
+                am.mode = if (voiceModeSaved == AudioManager.MODE_IN_COMMUNICATION) AudioManager.MODE_NORMAL else voiceModeSaved
+            }
+        } catch (_: Exception) {}
+    }
+    private fun audioDeviceName(type: Int): String = when (type) {
+        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "разговорный"
+        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "динамик"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET -> "проводная гарнитура"
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "проводные наушники"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth-связь"
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth-музыка"
+        AudioDeviceInfo.TYPE_USB_HEADSET -> "USB-гарнитура"
+        26 -> "BLE-гарнитура"
+        else -> "тип $type"
+    }
+    private fun describeAudio(): String = try {
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        val mode = when (am.mode) {
+            AudioManager.MODE_NORMAL -> "обычный"
+            AudioManager.MODE_IN_COMMUNICATION -> "связь"
+            AudioManager.MODE_IN_CALL -> "звонок"
+            AudioManager.MODE_RINGTONE -> "рингтон"
+            else -> am.mode.toString()
+        }
+        val route = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.communicationDevice?.let { audioDeviceName(it.type) } ?: "по умолчанию"
+        else @Suppress("DEPRECATION") run { if (am.isSpeakerphoneOn) "динамик" else "по умолчанию" }
+        val outs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).joinToString(",") { audioDeviceName(it.type) }
+        fun vol(stream: Int) = "${am.getStreamVolume(stream)}/${am.getStreamMaxVolume(stream)}"
+        "режим=$mode, фиксация=${if (voiceModeOn) "вкл" else "выкл"} (возвратов режима: $voiceModeFixes), маршрут=$route, выходы=[$outs], " +
+            "громкость: связь ${vol(AudioManager.STREAM_VOICE_CALL)}, музыка ${vol(AudioManager.STREAM_MUSIC)}, микрофон выключен системой=${am.isMicrophoneMute}"
+    } catch (e: Exception) { "ошибка: ${e.javaClass.simpleName}" }
     private fun startKeepAlive() {
         if (exiting) return
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
@@ -341,6 +439,7 @@ class MainActivity : Activity() {
         if (isFinishing) stopKeepAlive()
         networkCallback?.let { try { (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(it) } catch (_: Exception) {} }
         try { unregisterReceiver(screenOffReceiver) } catch (_: IllegalArgumentException) { }
+        applyVoiceMode(false)
         microphoneRequest?.deny()
         microphoneRequest = null
         files?.onReceiveValue(null)
