@@ -467,7 +467,6 @@ func (s *State) apply(c Command, deck []Card) error {
 			return locales.Errorf("go.internal.game.engine.text031")
 		}
 		remove(&s.Hands[s.Turn], card)
-		s.LastTrick = nil
 		s.Trick = append(s.Trick, Play{s.Turn, card})
 		if s.Contract != nil && s.Contract.Misere && s.Turn == s.Declarer {
 			s.MiserePlayed = append(s.MiserePlayed, card)

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestLastTrickPersistsUntilNextCardOrDeal(t *testing.T) {
+func TestLastTrickPersistsUntilNextDeal(t *testing.T) {
 	for _, n := range []int{3, 4} {
 		s := testState(t, n)
 		s = step(t, s, 0, "start", nil)
@@ -24,8 +24,8 @@ func TestLastTrickPersistsUntilNextCardOrDeal(t *testing.T) {
 			}
 		}
 		next := step(t, s, s.Actor(), "play", nil, s.LegalCards()[0])
-		if len(next.LastTrick) != 0 {
-			t.Fatal("previous trick survived the next player's card")
+		if !reflect.DeepEqual(next.LastTrick, trick) {
+			t.Fatal("previous trick lost after the next player's card")
 		}
 		// The final trick must also remain available until a new deal.
 		s.Stage = "trick"

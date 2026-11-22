@@ -30,6 +30,8 @@
   .three-player-table .table-announcement .misere-tracker { position: relative; top: -52px; }
 }
 .last-trick { position: absolute; bottom: 2px; left: 4px; pointer-events: none; z-index: 3; }
+.last-trick-button { display: block; margin: 2px auto 0; padding: 2px 8px; min-height: 22px; font-size: 11px; line-height: 16px; color: #e2ddbf; background: #0003; border: 1px solid #e2ddbf66; border-radius: 11px; cursor: pointer; pointer-events: auto; white-space: nowrap; }
+.last-trick-button:hover, .last-trick-button[aria-expanded="true"] { background: #0006; border-color: #e2ddbf; }
 .last-trick > div { position: relative; width: calc(var(--mini-card-size) + 2 * var(--mini-seat-step)); height: calc(var(--mini-card-size) + 2 * var(--mini-seat-step)); margin: 0 auto; }
 .last-trick > div > div { position: absolute; }
 .last-trick .mini-seat-self { left: var(--mini-seat-step); top: calc(2 * var(--mini-seat-step)); }

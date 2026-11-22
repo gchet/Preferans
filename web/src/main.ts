@@ -359,14 +359,26 @@ function talonThrown(v: View) { return v.players.length === 4 && v.talonShown; }
 function miniCard(c: number, classes = '', suffix = ''): string {
   return `<div class="mini-card ${(c >> 3) >= 2 ? 'red' : 'black'} ${classes}" role="img" aria-label="${esc(ranks[c % 8] + suits[c >> 3] + suffix)}"><span class="mini-face" aria-hidden="true"><b>${ranks[c % 8]}</b><span>${suits[c >> 3]}</span></span>${classes.includes('was-played') ? '<span class="played-mark" aria-hidden="true">✓</span>' : ''}</div>`;
 }
+let lastTrickOpen = false;
+let lastTrickKey = '';
 function lastTrick(v: View): string {
   const cards = (v.lastTrick || []).filter(p => p.seat >= 0);
-  return cards.length && ['play','trick','round','finished'].includes(v.stage) ? `<section class="last-trick" aria-label="${t('web.table.last_trick')}"><small>${t('web.table.last_trick')}</small><div>${cards.map(p => {
+  if (!cards.length || !['play','trick','round','finished'].includes(v.stage)) return '';
+  // A new last trick folds the preview back into the button.
+  const key = `${v.id}/${v.round}/${cards.map(p => `${p.seat}:${p.card}`).join(',')}`;
+  if (key !== lastTrickKey) { lastTrickKey = key; lastTrickOpen = false; }
+  const preview = lastTrickOpen ? `<div>${cards.map(p => {
     const relative = (p.seat - v.seat + v.players.length) % v.players.length;
     const position = relative === 0 ? 'self' : relative === 1 ? 'left' : v.players.length === 4 && relative === 2 ? 'top' : 'right';
     return `<div class="mini-seat-${position}" title="${esc(v.players[p.seat]?.name)}">${miniCard(p.card)}</div>`;
-  }).join('')}</div></section>` : '';
+  }).join('')}</div>` : '';
+  return `<section class="last-trick" aria-label="${t('web.table.last_trick')}">${preview}<button type="button" class="last-trick-button" data-last-trick-toggle aria-expanded="${lastTrickOpen}">${t('web.table.last_trick')}</button></section>`;
 }
+document.addEventListener('click', e => {
+  if (!(e.target as HTMLElement).closest('[data-last-trick-toggle]')) return;
+  lastTrickOpen = !lastTrickOpen;
+  render();
+});
 function misereTracker(v: View): string {
   const cards = ordered(v.misereCards!);
   const groups = [0, 1, 2, 3].map(s => cards.filter(c => (c >> 3) === s)).filter(g => g.length);

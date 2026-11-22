@@ -730,6 +730,10 @@ for (const [n,dealer] of [[3,2],[4,2],[4,1],[4,3]]) test(`misere tracker retains
   await expect(page.locator('.misere-tracker .was-played')).toHaveCount(0);
   await expect(page.locator('.misere-tracker [data-card]')).toHaveCount(0);
   await expect(page.locator('.misere-tracker img')).toHaveCount(0);
+  // The last trick is a button; its cards show only after a click and fold back on the second click.
+  await expect(page.locator('.last-trick .mini-card')).toHaveCount(0);
+  await page.locator('.last-trick-button').click();
+  await expect(page.locator('.last-trick-button')).toHaveAttribute('aria-expanded','true');
   await expect(page.locator('.last-trick .mini-card')).toHaveCount(n);
   const local=(await page.locator('.last-trick .mini-seat-self').boundingBox())!;
   const left=(await page.locator('.last-trick .mini-seat-left').boundingBox())!;
