@@ -1854,3 +1854,6 @@ body.at-table .table-heading .pass-reminder { display: block; margin: -1px 0 -13
   /* The title is hidden on short screens: the line stays in the row beside the pool button. */
   body.at-table .table-heading .pass-reminder { margin: 0; }
 }
+.tooth-options { display: grid; grid-template-columns: repeat(auto-fit,minmax(130px,1fr)); gap: 10px; margin: 16px 0 24px; }
+.tooth-thumb { display: block; width: 56px; height: 56px; margin: 8px auto; }
+.tooth-thumb path { fill: rgba(128, 96, 255, 0.82); stroke: rgba(226, 220, 255, 1); stroke-width: 0.5; stroke-linejoin: round; }

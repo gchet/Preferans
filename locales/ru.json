@@ -863,5 +863,9 @@
 "web.teeth.add_one": "Добавить зуб",
 "web.teeth.remove_one": "Убрать зуб",
 "web.settings.rules": "Правила",
+"web.settings.cards_teeth": "Карты + зубы",
+"web.settings.tooth_title": "Рисунок зуба",
+"web.settings.tooth_shark": "Зуб акулы",
+"web.settings.tooth_molar": "Коренной зуб",
 "web.settings.pool_dots": "Пуля и гора с точками"
 }

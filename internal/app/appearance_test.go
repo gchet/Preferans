@@ -49,3 +49,14 @@ func TestAppearancePersistsAcrossRestart(t *testing.T) {
 		t.Fatal("invalid request changed appearance")
 	}
 }
+
+func TestToothStyleValidation(t *testing.T) {
+	for _, style := range []string{"", "shark", "molar"} {
+		if !(Appearance{Deck: "atlas", Size: "normal", ToothStyle: style}).valid() {
+			t.Fatalf("tooth style %q rejected", style)
+		}
+	}
+	if (Appearance{Deck: "atlas", Size: "normal", ToothStyle: "triangle"}).valid() {
+		t.Fatal("unknown tooth style accepted")
+	}
+}

@@ -863,5 +863,9 @@
 "web.teeth.add_one": "Add a tooth",
 "web.teeth.remove_one": "Remove a tooth",
 "web.settings.rules": "Rules",
+"web.settings.cards_teeth": "Cards + teeth",
+"web.settings.tooth_title": "Tooth drawing",
+"web.settings.tooth_shark": "Shark tooth",
+"web.settings.tooth_molar": "Molar",
 "web.settings.pool_dots": "Pool and mountain with dots"
 }

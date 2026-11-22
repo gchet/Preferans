@@ -19,13 +19,13 @@ test('rooms: local language selection persists across screens without changing t
   await expect(page.locator('#room-roster')).toContainText('Локальна');
   await page.locator('#create-form [name="name"]').fill('Гена');
   await page.getByRole('button',{name:'Налаштування',exact:true}).click();
-  await expect(page.getByRole('tab',{name:'Карти',exact:true})).toBeVisible();
+  await expect(page.getByRole('tab',{name:'Карти + зуби',exact:true})).toBeVisible();
   await expect(page.getByRole('tab',{name:'Підключення',exact:true})).toBeVisible();
   await page.locator('#panel [data-language-picker]').selectOption('en');
   await expect(page.locator('html')).toHaveAttribute('lang','en');
   await expect(page.getByRole('button',{name:'Create table →',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Settings',exact:true}).click();
-  await expect(page.getByRole('tab',{name:'Cards',exact:true})).toBeVisible();
+  await expect(page.getByRole('tab',{name:'Cards + teeth',exact:true})).toBeVisible();
   await saveSettings(page);
   await page.reload();
   await expect(picker).toHaveValue('en');
@@ -2164,7 +2164,7 @@ test('all 96 SVG cards load with distinct suit-specific figures', async ({page})
 test('three SVG deck choices preview and persist', async ({page}) => {
   await page.goto(url);
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
-  await page.getByRole('tab',{name:'Карты',exact:true}).click();
+  await page.getByRole('tab',{name:'Карты + зубы',exact:true}).click();
   await expect(page.locator('[name="deck"]')).toHaveCount(3);
   await expect(page.locator('[name="card-size"]')).toHaveCount(0);
   await page.locator('[name="frame-atlas"]').uncheck();
@@ -2180,7 +2180,7 @@ test('three SVG deck choices preview and persist', async ({page}) => {
   await page.reload();
   await expect(page.locator('body')).toHaveAttribute('data-deck','woodcut');
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
-  await page.getByRole('tab',{name:'Карты',exact:true}).click();
+  await page.getByRole('tab',{name:'Карты + зубы',exact:true}).click();
   await expect(page.locator('[name="frame-atlas"]')).not.toBeChecked();
   await expect(page.locator('[name="frame-english"]')).toBeChecked();
   await expect(page.locator('[name="frame-woodcut"]')).not.toBeChecked();
@@ -2419,6 +2419,34 @@ test('teeth are added and removed one by one from the tooth button in my whist a
   await page.locator('.tooth-button').nth(1).click();
   await expect(page.locator('[data-teeth-delta="-1"]')).toBeDisabled();
 });
+test('the Cards + teeth settings tab offers two tooth drawings and the chosen one is drawn', async ({page}) => {
+  await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
+  await page.goto(url);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Карты + зубы',exact:true}).click();
+  // Both drawings are about the same size and the shark tooth is the default.
+  const thumbs = page.locator('.tooth-option .tooth-thumb');
+  await expect(thumbs).toHaveCount(2);
+  const [shark, molar] = await Promise.all([thumbs.nth(0).locator('path').boundingBox(), thumbs.nth(1).locator('path').boundingBox()]);
+  expect(Math.abs(shark!.height - molar!.height) / shark!.height).toBeLessThan(0.25);
+  await expect(page.locator('[name="tooth"][value="shark"]')).toBeChecked();
+  await page.locator('[name="tooth"][value="molar"]').check();
+  await page.reload();
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Карты + зубы',exact:true}).click();
+  await expect(page.locator('[name="tooth"][value="molar"]')).toBeChecked();
+  await page.reload();
+  await page.getByLabel('Боты для отладки').check();
+  await clickIdle(page, page.getByRole('button',{name:'Создать стол →'}));
+  await clickIdle(page, page.getByRole('button',{name:'Готов',exact:true}));
+  await startGame(page, page.getByRole('button',{name:'Начать партию',exact:true}));
+  await expect(page.locator('.hand .card')).toHaveCount(10);
+  await page.locator('.tooth-button').first().click();
+  await page.locator('[data-teeth-delta="1"]').click();
+  await expect(page.locator('.pool-tooth')).toHaveCount(1);
+  const drawn = await page.locator('.pool-tooth').first().getAttribute('d');
+  expect(drawn).not.toContain('M0-12');
+});
 test('teeth over a whist number are more transparent than teeth beside it', async ({page}) => {
   await page.route('http://signaling.example.org:8080/**', route => route.fulfill({json:{}}));
   await page.goto(url);
@@ -2456,7 +2484,7 @@ test('settings: the Play tab saves on change, the Save button stays on the Rules
   await page.getByRole('tab',{name:'Правила',exact:true}).click();
   await expect(save).toBeVisible();
   await expect(page.locator('#settings-game [name="debug-auction"]')).toHaveCount(0);
-  await page.getByRole('tab',{name:'Карты',exact:true}).click();
+  await page.getByRole('tab',{name:'Карты + зубы',exact:true}).click();
   await expect(save).toBeHidden();
   await page.getByRole('tab',{name:'Подключение',exact:true}).click();
   await expect(save).toBeHidden();

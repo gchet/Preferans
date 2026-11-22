@@ -20,6 +20,7 @@ export interface Appearance {
   size: string;
   largeIndices: boolean;
   back?: string;
+  toothStyle?: 'shark' | 'molar';
   logDisabled?: boolean;
   logPath?: string;
   updateURL?: string;

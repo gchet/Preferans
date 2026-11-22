@@ -31,6 +31,7 @@ type Appearance struct {
 	Size           string          `json:"size"`
 	LargeIndices   bool            `json:"largeIndices"`
 	Back           string          `json:"back"`
+	ToothStyle     string          `json:"toothStyle,omitempty"` // рисунок зуба в пуле: shark (по умолчанию) или molar
 	LogDisabled    bool            `json:"logDisabled"`
 	LogPath        string          `json:"logPath"`
 	UpdateURL      string          `json:"updateURL"`
@@ -82,6 +83,11 @@ func (p Appearance) valid() bool {
 	}
 	switch p.Deck {
 	case "english", "atlas", "woodcut":
+	default:
+		return false
+	}
+	switch p.ToothStyle {
+	case "", "shark", "molar":
 	default:
 		return false
 	}
