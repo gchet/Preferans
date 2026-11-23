@@ -1859,6 +1859,8 @@ for (const level of [7, 10]) test(`claim controls show all remaining results and
   });
   await page.getByRole('button',{name:'Предложить',exact:true}).click();
   await expect(page.locator('#claim-tricks option')).toHaveCount(5);
+  await expect(page.locator('#claim-tricks')).toHaveAttribute('size', '5');
+  await expect(page.locator('#claim-tricks')).toHaveValue(String(Math.min(level - 4, 4)));
   await expect(page.locator('#claim-tricks option[value="3"]')).toHaveText('Беру ещё 3 взятки (всего 7)');
   await page.locator('#claim-tricks').selectOption('3');
   await page.locator('[data-action="submit-claim"]').click();
@@ -2500,4 +2502,33 @@ test('settings: the Play tab saves on change, the Save button stays on the Rules
   await expect(page.locator('[name="pool-dots"]')).not.toBeChecked();
   await expect(page.locator('[name="pass-price-hint"]')).not.toBeChecked();
   await expect(page.locator('[name="debug-play"]')).toBeChecked();
+});
+
+test('voice boost setting is hidden outside the Android app', async ({page}) => {
+  await page.goto(url);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Подключение',exact:true}).click();
+  await expect(page.locator('[name="voice-path"]')).toBeVisible();
+  await expect(page.locator('[name="voice-boost"]')).toHaveCount(0);
+  await expect(page.locator('[name="voice-gain"]')).toHaveCount(0);
+});
+
+test('voice boost setting is saved on this device and restored after reload', async ({page}) => {
+  await page.addInitScript(() => { (window as unknown as {PreferansAndroid: object}).PreferansAndroid = {getVersionName: () => '2.0.17'}; });
+  await page.goto(url);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Подключение',exact:true}).click();
+  const on=page.locator('[name="voice-boost"]'), level=page.locator('[name="voice-gain"]');
+  await expect(on).not.toBeChecked();
+  await on.check();
+  await level.fill('300');
+  await expect(page.locator('#voice-gain-out')).toHaveText('300%');
+  await expect.poll(() => page.evaluate(() => [localStorage.getItem('preferans-voice-boost'), localStorage.getItem('preferans-voice-gain')])).toEqual(['1','300']);
+  await page.reload();
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await page.getByRole('tab',{name:'Подключение',exact:true}).click();
+  await expect(page.locator('[name="voice-boost"]')).toBeChecked();
+  await expect(page.locator('[name="voice-gain"]')).toHaveValue('300');
+  await page.locator('[name="voice-boost"]').uncheck();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('preferans-voice-boost'))).toBe('0');
 });

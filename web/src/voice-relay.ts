@@ -17,7 +17,15 @@ export const relaySupported = () => {
 
 interface Sink { dec: any; gain: GainNode; next: number; ts: number }
 
+// Ограничитель после усиления: без него усиленная речь клипуется и хрипит. Ниже порога почти не меняет звук.
+export function makeLimiter(ctx: AudioContext): DynamicsCompressorNode {
+  const c = ctx.createDynamicsCompressor();
+  c.threshold.value = -3; c.knee.value = 0; c.ratio.value = 20; c.attack.value = 0.003; c.release.value = 0.15;
+  return c;
+}
+
 export class RelayAudio {
+  private boost = 1;
   private ctx?: AudioContext;
   private src?: MediaStreamAudioSourceNode;
   private proc?: ScriptProcessorNode;
@@ -110,7 +118,12 @@ export class RelayAudio {
   setAudible(seat: number, on: boolean) {
     this.audible.set(seat, on);
     const sink = this.sinks.get(seat);
-    if (sink) sink.gain.gain.value = on ? 1 : 0;
+    if (sink) sink.gain.gain.value = on ? this.boost : 0;
+  }
+  // Усиление звука, пришедшего через стол (1 — без усиления).
+  setBoost(value: number) {
+    this.boost = value;
+    for (const [seat, sink] of this.sinks) sink.gain.gain.value = this.audible.get(seat) === false ? 0 : value;
   }
   private sink(seat: number): Sink | undefined {
     let s = this.sinks.get(seat);
@@ -119,8 +132,9 @@ export class RelayAudio {
     const ctx = this.context();
     const w = window as any;
     const gain = ctx.createGain();
-    gain.gain.value = this.audible.get(seat) === false ? 0 : 1;
-    gain.connect(ctx.destination);
+    gain.gain.value = this.audible.get(seat) === false ? 0 : this.boost;
+    const limiter = makeLimiter(ctx);
+    gain.connect(limiter); limiter.connect(ctx.destination);
     const dec = new w.AudioDecoder({
       output: (data: any) => this.out(seat, data),
       error: (e: any) => this.log(`звук через стол: ошибка декодера Opus (место ${seat + 1}): ${e?.message || e}`),

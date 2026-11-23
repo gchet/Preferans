@@ -39,6 +39,12 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
         (window as any).__voiceModes=[];
         (window as any).PreferansAndroid={setVoiceMode:(on:boolean)=>{(window as any).__voiceModes.push(on);},audioInfo:()=>'режим=связь, тест'};
       });
+      // у второго игрока оболочка «Android» с включённым усилением голоса: звук идёт через WebAudio с замером уровня,
+      // и приём голоса от остальных игроков не должен пострадать
+      if(i===1)await context.addInitScript(() => {
+        (window as any).PreferansAndroid={};
+        localStorage.setItem('preferans-voice-boost','1');
+      });
       const page=await context.newPage();
       await page.route('**/*',async route=>{
         const u=new URL(route.request().url());
@@ -110,7 +116,9 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     await host.locator('[data-speaker="all"]').click();
     await expect.poll(mutedAudio).toEqual([{seat:'1',muted:true},{seat:'2',muted:false}]);
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
-    expect(await clients[1].page.locator('[data-voice-audio]').evaluateAll(nodes=>nodes.every(n=>!(n as HTMLAudioElement).muted))).toBeTruthy();
+    // у второго игрока включено усиление: звук идёт через WebAudio, а сами <audio> остаются без звука; отключение звука у хоста его не касается
+    await expect.poll(async()=>((await rpc(1,'status')).logs as string[]).some(l=>/усиление голоса ×2\.00 \(звук идёт через WebAudio\)/.test(l)),{timeout:30000}).toBeTruthy();
+    expect(await clients[1].page.locator('[data-voice-audio]').evaluateAll(nodes=>nodes.length>0&&nodes.every(n=>(n as HTMLAudioElement).muted))).toBeTruthy();
     // A normal Android background transition keeps the microphone state. If the
     // platform stops its track while backgrounded, returning restores it.
     await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-background')));

@@ -189,6 +189,14 @@ func (a *App) EnterRoom(id string) error {
 		a.updateLocalRoomLocked()
 		return nil
 	}
+	// Пока лучший живой ведущий этому устройству недоступен, вход в комнату посадил бы игрока на сервис, которого другие
+	// не видят: две «Север» с разными участниками (партия 22.11). «Не ждать» снимает запрет.
+	a.mu.Lock()
+	held := a.roomsHeldLocked()
+	a.mu.Unlock()
+	if held {
+		return locales.Errorf("go.rooms.lobby_gathering")
+	}
 	if old != "" && old != id && old != localRoomID {
 		// A deleted/full default room was never joined and cannot require a leave.
 		_, _ = a.roomRequest(rooms.Request{Op: "leave", Room: old})
@@ -440,7 +448,7 @@ func (a *App) roomTick() {
 		return
 	}
 	a.mu.Lock()
-	wait := time.Now().Before(a.rooms.retryAt)
+	wait := time.Now().Before(a.rooms.retryAt) || a.roomsHeldLocked()
 	a.mu.Unlock()
 	if wait {
 		return

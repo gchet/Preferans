@@ -366,3 +366,34 @@ func TestLobbyEveryDeviceAnnounces(t *testing.T) {
 		return seen[100] && seen[200]
 	})
 }
+
+// Устройство, которому недоступен лучший живой ведущий, не входит в комнаты, пока не встретится с ним или игрок не нажмёт
+// «Не ждать»: иначе оно оказалось бы участником комнаты на сервисе, которого другие не видят.
+func TestRoomsHeldWhileBestHostUnreachable(t *testing.T) {
+	a := New(t.TempDir())
+	defer a.Close()
+	r, err := a.RoomDirectory("create", "", "Север")
+	if err != nil || r.Room == nil {
+		t.Fatalf("%+v %v", r, err)
+	}
+	a.mu.Lock()
+	a.lobbyEnabled = true
+	a.mu.Unlock()
+	a.setLobbyDiverged(true)
+	if err := a.EnterRoom(r.Room.ID); err == nil {
+		t.Fatal("вход в комнату должен быть приостановлен")
+	}
+	a.mu.Lock()
+	a.lobbySkipWait = true
+	a.mu.Unlock()
+	if err := a.EnterRoom(r.Room.ID); err != nil {
+		t.Fatalf("после «Не ждать» вход разрешён: %v", err)
+	}
+	a.setLobbyDiverged(false)
+	a.mu.Lock()
+	held := a.roomsHeldLocked()
+	a.mu.Unlock()
+	if held {
+		t.Fatal("после встречи с ведущим запрета нет")
+	}
+}

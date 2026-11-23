@@ -238,6 +238,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 				}
 			}
 			a.setLobbyUnsettled(unreachable)
+			a.setLobbyDiverged(skipped)
 			a.setLobbyReady()
 			a.applyLobbyService("", "")
 			a.lobbyAnnounce(ctx, node, since)
@@ -263,6 +264,7 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 		}
 		a.lobbyOK(winner.ID)
 		a.setLobbyUnsettled(skipped)
+		a.setLobbyDiverged(skipped)
 		a.setLobbyReady()
 		a.saveHost(winner)
 		if code, err := p2p.Encode(p2p.Code{Kind: p2p.KindService, Invite: winner.Invite()}); err == nil {
@@ -272,6 +274,24 @@ func (a *App) lobbyTick(node *p2p.Node, since int64) {
 		a.syncOthers(node, ranked, winner.ID)
 		return
 	}
+}
+
+// setLobbyDiverged запоминает, что устройство сидит не на сервисе лучшего живого ведущего: тот ему недоступен, а другим
+// игрокам, возможно, доступен. Пока так, устройство не входит в комнаты и не опрашивает комнату: иначе оно оказалось бы
+// участником комнаты на сервисе, которого другие не видят (партия 22.11: две «Север» с разными участниками).
+func (a *App) setLobbyDiverged(v bool) {
+	a.mu.Lock()
+	changed := a.lobbyDiverged != v
+	a.lobbyDiverged = v
+	a.mu.Unlock()
+	if changed && v {
+		a.lobbyLog("лобби: лучший ведущий недоступен этому устройству, вход в комнаты приостановлен до встречи с ним (или «Не ждать»)")
+	}
+}
+
+// roomsHeldLocked: вход в комнаты и опрос комнаты приостановлены (см. setLobbyDiverged). Игрок за столом не затрагивается.
+func (a *App) roomsHeldLocked() bool {
+	return a.lobbyEnabled && a.appearance.RoomServiceURL == "" && a.lobbyDiverged && !a.lobbySkipWait && a.saved.Table == "" && a.rooms.config.Table == ""
 }
 
 // setLobbyUnsettled запоминает, что часть живых игроков этому устройству недоступна. Пока это так, создание комнаты
