@@ -63,6 +63,7 @@ class MainActivity : Activity() {
     private var microphoneRequest: PermissionRequest? = null
     private var exiting = false
     private var exportingLog = false
+    private var keepAliveOn = false
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_OFF && ::web.isInitialized)
@@ -292,6 +293,7 @@ class MainActivity : Activity() {
             getSharedPreferences("interface", MODE_PRIVATE).edit().putBoolean("notificationsAsked", true).apply()
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 12)
         }
+        keepAliveOn = true
         try {
             startForegroundService(Intent(this, KeepAliveService::class.java)
                 .putExtra("channel", text("android.keepalive.channel"))
@@ -301,6 +303,7 @@ class MainActivity : Activity() {
         askIgnoreBatteryOptimizations()
     }
     private fun stopKeepAlive() {
+        keepAliveOn = false
         try { stopService(Intent(this, KeepAliveService::class.java)) } catch (_: Exception) {}
     }
     // Доза и экономия батареи отключают сеть у свёрнутого приложения. Просим исключение один раз за установку.
@@ -454,9 +457,11 @@ class MainActivity : Activity() {
         if (requestCode == 10) {
             val request = microphoneRequest
             microphoneRequest = null
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 request?.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-            else request?.deny()
+                // Служба получает тип «микрофон» только при выданном разрешении: перезапускаем её, если она уже работает.
+                if (keepAliveOn) startKeepAlive()
+            } else request?.deny()
         }
         if (requestCode == 11) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) exportLogToDownloads()
@@ -468,7 +473,9 @@ class MainActivity : Activity() {
             val locked = (getSystemService(KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
             val event = if (locked) "preferans-voice-lock" else "preferans-voice-background"
             web.evaluateJavascript("window.dispatchEvent(new Event('$event'))", null)
-            web.onPause()
+            // Пока работает служба переднего плана, свёрнутое приложение продолжает разговор: страницу усыпляем только
+            // при блокировке устройства (тогда микрофон уже выключен).
+            if (locked || !keepAliveOn) web.onPause()
         }
         super.onPause()
     }

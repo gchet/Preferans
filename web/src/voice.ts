@@ -55,6 +55,9 @@ export class VoiceChat {
   private resumeMic?: {roomId: string; seat: number};
   private restoreMicrophone = false;
   private backgrounded = false;
+  // Микрофон выключили при блокировке устройства и по настройке вернём после разблокировки.
+  private lockRestore = false;
+  private restoreAfterUnlockOn = true; // по умолчанию включено; в хранилище записывается только выбор игрока
   private outbound: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setInterval>;
   private relayTimer: ReturnType<typeof setInterval>;
@@ -184,6 +187,8 @@ export class VoiceChat {
       const mode = localStorage.getItem('preferans-voice-path');
       if (mode === 'webrtc' || mode === 'table') this.pathMode = mode;
     } catch { /* Хранилище может быть недоступно: остаётся автоматический выбор. */ }
+    try { this.restoreAfterUnlockOn = localStorage.getItem('preferans-voice-restore') !== '0'; }
+    catch { /* Хранилище может быть недоступно: остаётся значение по умолчанию (восстанавливать). */ }
     if (this.boostAllowed) try {
       this.boostOn = localStorage.getItem('preferans-voice-boost') === '1';
       const level = Number(localStorage.getItem('preferans-voice-gain'));
@@ -205,25 +210,37 @@ export class VoiceChat {
       if ((e.target as Element).closest('[data-microphone]')) void this.toggle();
     });
     document.addEventListener('pointerdown', () => this.playAudio());
-    window.addEventListener('preferans-voice-background', () => {
-      this.backgrounded = true;
-      this.restoreMicrophone = !!this.stream;
-    });
+    // Свёрнутое приложение продолжает разговор: микрофон остаётся включённым (процесс держит служба переднего плана).
+    window.addEventListener('preferans-voice-background', () => { this.backgrounded = true; });
     window.addEventListener('preferans-voice-resume', () => {
       this.backgrounded = false;
-      const restore = this.restoreMicrophone;
-      this.restoreMicrophone = false;
-      if (restore && !this.stream) void this.toggle();
+      const restore = this.restoreMicrophone || this.lockRestore;
+      this.restoreMicrophone = false; this.lockRestore = false;
+      if (restore && !this.stream) { this.log('приложение снова на экране: микрофон включается'); void this.toggle(); }
     });
-    // Android sends this only when the device is locked (screen turned off).
+    // Android присылает это при блокировке устройства (экран выключен): микрофон выключается, а по настройке
+    // «Восстанавливать микрофон после разблокировки» включится при возврате в приложение.
     window.addEventListener('preferans-voice-lock', () => {
       this.backgrounded = false;
       this.restoreMicrophone = false;
+      // Сообщение приходит дважды (выключение экрана и пауза окна): второй раз микрофон уже выключен, запись о нём не трогаем.
+      if (!this.stream) return;
+      this.lockRestore = this.restoreAfterUnlockOn;
+      this.log(`устройство заблокировано: микрофон выключен${this.lockRestore ? ', после разблокировки включится' : ''}`);
       void this.mute();
     });
     window.addEventListener('pagehide', () => { this.stop(); clearInterval(this.timer); clearInterval(this.relayTimer); });
   }
   get path(): VoicePath { return this.pathMode; }
+  get restoreAfterUnlock(): boolean { return this.restoreAfterUnlockOn; }
+  // Настройка «Восстанавливать микрофон после разблокировки» (только Android).
+  setRestoreAfterUnlock(on: boolean) {
+    if (on === this.restoreAfterUnlockOn) return;
+    this.restoreAfterUnlockOn = on;
+    try { localStorage.setItem('preferans-voice-restore', on ? '1' : '0'); } catch { /* действует до перезагрузки */ }
+    if (!on) this.lockRestore = false;
+    this.log(`микрофон после разблокировки: ${on ? 'восстанавливается' : 'не восстанавливается'}`);
+  }
   // Как идёт голос: автоматически (WebRTC, а для не соединившейся пары — через стол), только WebRTC или только через стол.
   setPath(mode: VoicePath) {
     if (mode === this.pathMode) return;
@@ -556,6 +573,7 @@ export class VoiceChat {
   }
   private async toggle() {
     if (!this.room || this.micBusy) return;
+    this.lockRestore = false;
     this.playAudio();
     if (this.stream) { await this.mute(); return; }
     const session = this.session;
@@ -606,7 +624,7 @@ export class VoiceChat {
   }
   private stop() {
     this.stream?.getTracks().forEach(t => t.stop()); this.stream = undefined;
-    this.restoreMicrophone = false; this.backgrounded = false;
+    this.restoreMicrophone = false; this.lockRestore = false; this.backgrounded = false;
     for (const peer of this.peers.values()) this.close(peer);
     this.relay.stopAll();
     this.peers.clear(); this.room = null;

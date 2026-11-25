@@ -2532,3 +2532,49 @@ test('voice boost setting is saved on this device and restored after reload', as
   await page.locator('[name="voice-boost"]').uncheck();
   await expect.poll(() => page.evaluate(() => localStorage.getItem('preferans-voice-boost'))).toBe('0');
 });
+
+test('voice restore setting exists only in the Android app and is saved on this device', async ({page}) => {
+  await page.addInitScript(() => { (window as unknown as {PreferansAndroid: object}).PreferansAndroid = {getVersionName: () => '2.0.17'}; });
+  await page.goto(url);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  const box=page.locator('[name="voice-restore"]');
+  await expect(box).toBeVisible();
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('preferans-voice-restore'))).toBe('0');
+  await page.reload();
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await expect(page.locator('[name="voice-restore"]')).not.toBeChecked();
+  await page.locator('[name="voice-restore"]').check();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('preferans-voice-restore'))).toBe('1');
+});
+
+test('voice restore setting is hidden outside the Android app', async ({page}) => {
+  await page.goto(url);
+  await page.getByRole('button',{name:'Настройки',exact:true}).click();
+  await expect(page.locator('[name="pool-dots"]')).toBeVisible();
+  await expect(page.locator('[name="voice-restore"]')).toHaveCount(0);
+});
+
+test('android foreground service starts when more than one player has gathered in the room', async ({page}) => {
+  await page.addInitScript(() => {
+    const calls: boolean[] = [];
+    (window as unknown as {__keepAlive: boolean[]}).__keepAlive = calls;
+    (window as unknown as {PreferansAndroid: object}).PreferansAndroid = {setKeepAlive: (on: boolean) => { calls.push(on); }};
+  });
+  let members=[{id:'me',name:'Гена',slot:0,online:true}];
+  await page.route('**/api',async route=>{
+    const req=route.request().postDataJSON();
+    if(req.action==='rooms-list')return route.fulfill({json:{data:{rooms:[]}}});
+    const response=await route.fetch(),body=await response.json();
+    if(req.action==='status')Object.assign(body.data,{roomMode:true,connectionSetup:false,room:{id:'r1',name:'Север',members},roomSelf:'me',roomOnline:true});
+    await route.fulfill({response,json:body});
+  });
+  await page.goto(url);
+  const last=() => page.evaluate(() => (window as unknown as {__keepAlive: boolean[]}).__keepAlive.at(-1) ?? null);
+  await expect.poll(last).toBe(null);
+  members=[...members,{id:'f',name:'Лена',slot:1,online:true}];
+  await expect.poll(last,{timeout:15000}).toBe(true);
+  members=[members[0],{id:'f',name:'Лена',slot:1,online:false}];
+  await expect.poll(last,{timeout:15000}).toBe(false);
+});

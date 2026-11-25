@@ -2,6 +2,7 @@ import {test, expect, chromium, type Page, type BrowserContext} from '@playwrigh
 import {spawn, type ChildProcess} from 'node:child_process';
 import {resolve} from 'node:path';
 import {readFile} from 'node:fs/promises';
+import {saveSettings} from './helpers';
 import {createServer} from 'node:net';
 
 for(const roomsMode of [false,true]) test(`three human players exchange audio, mute, reconnect and leave; rooms=${roomsMode}`, async () => {
@@ -129,11 +130,32 @@ for(const roomsMode of [false,true]) test(`three human players exchange audio, m
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
     await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-resume')));
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
-    // Locking the device is different: it always leaves the microphone off.
+    // Блокировка устройства выключает микрофон, а после разблокировки по умолчанию возвращается то состояние, что было перед ней.
+    // Сообщение о блокировке Android присылает дважды (экран выключен и пауза окна): второе не должно сбросить восстановление.
+    await host.evaluate(()=>{window.dispatchEvent(new Event('preferans-voice-lock'));window.dispatchEvent(new Event('preferans-voice-lock'));});
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-resume')));
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
+    // Микрофон, выключенный до блокировки, после разблокировки остаётся выключенным.
+    await host.locator('[data-microphone]').click();
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-lock')));
+    await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-resume')));
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    // Если восстановление выключено в настройках, микрофон после разблокировки остаётся выключенным.
+    await host.locator('[data-microphone]').click();
+    await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
+    await host.getByRole('button',{name:'Настройки',exact:true}).click();
+    await expect(host.locator('[name="voice-restore"]')).toBeChecked();
+    await host.locator('[name="voice-restore"]').uncheck();
+    await saveSettings(host);
     await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-lock')));
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
     await host.evaluate(()=>window.dispatchEvent(new Event('preferans-voice-resume')));
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','false');
+    await host.getByRole('button',{name:'Настройки',exact:true}).click();
+    await host.locator('[name="voice-restore"]').check();
+    await saveSettings(host);
     await host.locator('[data-microphone]').click();
     await expect(host.locator('[data-microphone]')).toHaveAttribute('aria-pressed','true');
     if(roomsMode){

@@ -761,6 +761,7 @@ async function autosaveSettings() {
       const voicePath = String(d.get("voice-path") || "auto");
       if (voicePath === "auto" || voicePath === "webrtc" || voicePath === "table") voice.setPath(voicePath);
       voice.setBoost(d.has("voice-boost"), Number(d.get("voice-gain")));
+      if (document.querySelector("#settings-form [name=voice-restore]")) voice.setRestoreAfterUnlock(d.has("voice-restore"));
       const serviceCode = String(d.get("room-service-url") || "").trim();
       if (form.querySelector("[name=room-service-url]") && serviceCode !== (appearance.roomServiceURL || "")) await rpc("room-service", {url: serviceCode});
       await rpc("appearance", {
@@ -873,7 +874,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
     if(status.roomMode && !status.roomLocal){$('#settings-connection').insertAdjacentHTML('afterbegin',`<label>${t("web.main.text070")}<select name="default-room"><option value="">${t("web.main.text071")}</option></select></label>`);void roomUI.settings(appearance.defaultRoom || '');}
     $("#settings-game").insertAdjacentHTML("afterbegin", `<section class="conventions"><div class="variant-tabs" role="tablist" aria-label="${t("web.main.text068")}"><button id="tab-leningrad" role="tab" aria-selected="true" aria-controls="leningrad-settings">${t("web.main.text069")}</button>${[t("web.main.text067"),t("web.main.text066"),t("web.main.text065")].map(name => `<button role="tab" aria-selected="false" disabled title="${t("web.main.text063")}">${name}<small>${t("web.main.text064")}</small></button>`).join("")}</div><div id="leningrad-settings" role="tabpanel" aria-labelledby="tab-leningrad">${rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), !v || (status.host && v.stage==='lobby'))}</div></section>`);
     $("#tab-leningrad").setAttribute("type", "button");
-        $("#settings-play").innerHTML = `<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label><label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label><label class="check"><input type="checkbox" name="pool-dots" ${appearance.poolDots !== false ? "checked" : ""}>${t("web.settings.pool_dots")}</label>`;
+        $("#settings-play").innerHTML = `<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label><label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label><label class="check"><input type="checkbox" name="pool-dots" ${appearance.poolDots !== false ? "checked" : ""}>${t("web.settings.pool_dots")}</label>${window.PreferansAndroid ? `<label class="check"><input type="checkbox" name="voice-restore" ${voice.restoreAfterUnlock ? "checked" : ""}>${t("web.voice.restore_after_unlock")}</label>` : ""}`;
     $("#settings-play").insertAdjacentHTML("beforeend",`<div class="debug-settings"><strong>${t("web.debug.setting")}:</strong><label class="check"><input type="checkbox" name="debug-auction" ${debugAuction() ? "checked" : ""}>${t("web.debug.auction")}</label><label class="check"><input type="checkbox" name="debug-play" ${debugPlay() ? "checked" : ""}>${t("web.debug.play")}</label></div>`);
     previewDeck();
     $("#panel-body").insertAdjacentHTML("beforeend", `<p class="about-line">${esc(t("web.about.line", {p0: appVersion}))}</p>`);
@@ -1156,6 +1157,7 @@ document.addEventListener("submit", (e) => {
       const voicePath = String(d.get('voice-path') || 'auto');
       if (voicePath === 'auto' || voicePath === 'webrtc' || voicePath === 'table') voice.setPath(voicePath);
       voice.setBoost(d.has('voice-boost'), Number(d.get('voice-gain')));
+      if (document.querySelector('#settings-form [name=voice-restore]')) voice.setRestoreAfterUnlock(d.has('voice-restore'));
       const serviceCode=String(d.get('room-service-url') || '').trim();
       if(serviceCode!==(appearance.roomServiceURL || ''))await rpc('room-service',{url:serviceCode});
       const editable = !status.view || (status.host && status.view.stage === 'lobby');
@@ -1267,7 +1269,9 @@ async function refresh() {
 async function refreshState() {
   const s = await rpc<Status>("status");
   window.PreferansAndroid?.setLanguage?.(language);
-  setKeepAlive(!!s.view && s.view.stage !== 'finished');
+  // Служба переднего плана (Android): пока идёт партия или в комнате (на экране создания стола) собрались двое и больше.
+  const gathered = (s.room?.members ?? []).filter(member => member.online).length > 1;
+  setKeepAlive((!!s.view && s.view.stage !== 'finished') || gathered);
   if (s.view) await prepareCards(s.appearance);
   else void prepareCards(s.appearance);
   // Keep the actual button under the finger until the native click is dispatched.
