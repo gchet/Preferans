@@ -13,6 +13,9 @@ type SearchOptions struct {
 	Samples    int
 	ExactCards int
 	Seed       int64
+	// SimSamples enables simulation-based bidding and discard (SimBotCommand) with
+	// this many sampled deals per decision; zero leaves those stages to BotCommand.
+	SimSamples int
 }
 type SearchStats struct {
 	Samples int
@@ -33,6 +36,13 @@ func SearchBotCommand(ctx context.Context, situation BotSituation, options Searc
 		return command, result
 	}
 	command := BotCommand(v)
+	if v.Stage != "play" && options.SimSamples > 0 {
+		if simulated, samples, ok := SimBotCommand(ctx, v, options.Seed, options.SimSamples); ok {
+			stats.Samples = samples
+			stats.Elapsed = time.Since(start)
+			return simulated, stats
+		}
+	}
 	if v.Stage != "play" || v.Claim != nil || len(v.Legal) < 2 {
 		return command, stats
 	}

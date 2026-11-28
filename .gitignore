@@ -67,3 +67,6 @@ natlab.exe
 .lab/
 voicetest.exe
 natlab-arm64
+
+# Лаборатория ботов (результаты запусков cmd/botlab)
+/.lab/

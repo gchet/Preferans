@@ -28,7 +28,8 @@ func (a *App) startLocalSearchLocked(s *game.State, seat int) {
 		binary.LittleEndian.PutUint64(revision[:], snapshot.Revision)
 		_, _ = hash.Write(revision[:])
 		command, stats := game.SearchBotCommand(ctx, situation, game.SearchOptions{
-			Samples: config.Interface.LocalBotSearchSamples, ExactCards: config.Interface.LocalBotExactCards, Seed: int64(hash.Sum64())})
+			Samples: config.Interface.LocalBotSearchSamples, ExactCards: config.Interface.LocalBotExactCards, Seed: int64(hash.Sum64()),
+			SimSamples: config.Interface.LocalBotSimSamples})
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.ai.pending != request {
