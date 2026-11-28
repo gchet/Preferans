@@ -460,7 +460,7 @@ func (a *App) localBotLocked(s *game.State, seat int, reason string) {
 	if reason != "" {
 		a.logLocked("%s", locales.Format("go.ai.fallback", s.Players[seat].Name, reason))
 	}
-	if (s.Stage == "play" && (s.Claim != nil || len(s.View(seat).Legal) > 1)) || s.Stage == "auction" || s.Stage == "discard" {
+	if (s.Stage == "play" && (s.Claim != nil || len(s.View(seat).Legal) > 1)) || s.Stage == "auction" || s.Stage == "discard" || (s.Stage == "defend" && !a.appearance.BotPassesWhist()) {
 		a.startLocalSearchLocked(s, seat)
 		return
 	}

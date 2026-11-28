@@ -15,6 +15,7 @@ func (a *App) startLocalSearchLocked(s *game.State, seat int) {
 		return
 	}
 	snapshot := s.Clone()
+	ownWhist := !a.appearance.BotPassesWhist()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Interface.LocalBotSearchTimeMs)*time.Millisecond)
 	request := &aiRequest{table: s.ID, revision: s.Revision, seat: seat, cancel: cancel, started: time.Now()}
 	a.ai.pending = request
@@ -29,7 +30,7 @@ func (a *App) startLocalSearchLocked(s *game.State, seat int) {
 		_, _ = hash.Write(revision[:])
 		command, stats := game.SearchBotCommand(ctx, situation, game.SearchOptions{
 			Samples: config.Interface.LocalBotSearchSamples, ExactCards: config.Interface.LocalBotExactCards, Seed: int64(hash.Sum64()),
-			SimSamples: config.Interface.LocalBotSimSamples})
+			SimSamples: config.Interface.LocalBotSimSamples, OwnWhist: ownWhist})
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.ai.pending != request {

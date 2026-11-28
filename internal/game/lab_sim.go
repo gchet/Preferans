@@ -38,6 +38,8 @@ func labWhistSim(opt *LabSim) LabHook {
 //	sims, topk           simulation samples per decision, discard candidates
 //	margin, passvalue    bid when the best contract beats passvalue+margin points
 //	whistmin             whist when it beats passing by this many points
+//	belief, beliefshift  weight sampled declarer hands by how well they fit the bid (sigma, centre shift)
+//	partner=pass|whist   what the first defender assumes about the other defender (default whist)
 //
 // Unknown keys are an error, so a typo cannot silently turn into a comparison of
 // identical bots.
@@ -63,6 +65,12 @@ func ParseLabPolicy(spec string) (LabPolicy, error) {
 			} else {
 				trumpSim = value == "sim"
 			}
+			continue
+		case "partner":
+			if value != "pass" && value != "whist" {
+				return p, fmt.Errorf("partner=%q: expected pass or whist", value)
+			}
+			p.Sim.PartnerPass = value == "pass"
 			continue
 		case "whist":
 			switch value {
@@ -99,6 +107,10 @@ func ParseLabPolicy(spec string) (LabPolicy, error) {
 			p.Sim.PassValue = number
 		case "whistmin":
 			p.Sim.WhistMin = number
+		case "belief":
+			p.Sim.Belief = number
+		case "beliefshift":
+			p.Sim.BeliefShift = number
 		default:
 			return p, fmt.Errorf("unknown policy key %q in %q", key, spec)
 		}

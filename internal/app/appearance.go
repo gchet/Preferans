@@ -20,7 +20,8 @@ type Appearance struct {
 	DebugPlay      *bool           `json:"debugPlay,omitempty"`
 	Debug          bool            `json:"debug"`
 	PassPriceHint  *bool           `json:"passPriceHint,omitempty"`
-	PoolDots       *bool           `json:"poolDots,omitempty"` // пуля и гора нарастающим итогом через точку; пусто — включено
+	PoolDots       *bool           `json:"poolDots,omitempty"`     // пуля и гора нарастающим итогом через точку; пусто — включено
+	BotPassWhist   *bool           `json:"botPassWhist,omitempty"` // боты этого ведущего пасуют на вистах; пусто — включено
 	PlayerCount    int             `json:"playerCount,omitempty"`
 	PoolTarget     int             `json:"poolTarget,omitempty"`
 	DefaultRoom    string          `json:"defaultRoom"`
@@ -215,3 +216,6 @@ func (p *Appearance) migrateDeck() {
 		p.Deck = "atlas"
 	}
 }
+
+// BotPassesWhist tells whether the bots of this host always pass when asked to whist.
+func (a Appearance) BotPassesWhist() bool { return a.BotPassWhist == nil || *a.BotPassWhist }

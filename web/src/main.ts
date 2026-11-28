@@ -770,6 +770,7 @@ async function autosaveSettings() {
           localOnly: d.has("local-only"),
           passPriceHint: d.has("pass-price-hint"),
           poolDots: d.has("pool-dots"),
+          botPassWhist: d.has("bot-pass-whist"),
           debug: d.has("debug-auction") || d.has("debug-play"),
           debugAuction: d.has("debug-auction"),
           debugPlay: d.has("debug-play"),
@@ -874,7 +875,7 @@ function showPanel(kind: string, historyView?: View, botSeat?: number) {
     if(status.roomMode && !status.roomLocal){$('#settings-connection').insertAdjacentHTML('afterbegin',`<label>${t("web.main.text070")}<select name="default-room"><option value="">${t("web.main.text071")}</option></select></label>`);void roomUI.settings(appearance.defaultRoom || '');}
     $("#settings-game").insertAdjacentHTML("afterbegin", `<section class="conventions"><div class="variant-tabs" role="tablist" aria-label="${t("web.main.text068")}"><button id="tab-leningrad" role="tab" aria-selected="true" aria-controls="leningrad-settings">${t("web.main.text069")}</button>${[t("web.main.text067"),t("web.main.text066"),t("web.main.text065")].map(name => `<button role="tab" aria-selected="false" disabled title="${t("web.main.text063")}">${name}<small>${t("web.main.text064")}</small></button>`).join("")}</div><div id="leningrad-settings" role="tabpanel" aria-labelledby="tab-leningrad">${rulesForm(v ? v.rules || defaultRules : appearance.tableRules || defaultRules, v?.target || Number(document.querySelector<HTMLInputElement>('#create-form [name="target"]')?.value || appearance.poolTarget || 30), !v || (status.host && v.stage==='lobby'))}</div></section>`);
     $("#tab-leningrad").setAttribute("type", "button");
-        $("#settings-play").innerHTML = `<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label><label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label><label class="check"><input type="checkbox" name="pool-dots" ${appearance.poolDots !== false ? "checked" : ""}>${t("web.settings.pool_dots")}</label>${window.PreferansAndroid ? `<label class="check"><input type="checkbox" name="voice-restore" ${voice.restoreAfterUnlock ? "checked" : ""}>${t("web.voice.restore_after_unlock")}</label>` : ""}`;
+        $("#settings-play").innerHTML = `<label class="check"><input type="checkbox" name="local-only" ${appearance.localOnly?'checked':''}>${t('web.local.setting')}</label><label class="check"><input type="checkbox" name="pass-price-hint" ${appearance.passPriceHint !== false ? "checked" : ""}>${t("web.pass_price.setting")}</label><label class="check"><input type="checkbox" name="pool-dots" ${appearance.poolDots !== false ? "checked" : ""}>${t("web.settings.pool_dots")}</label><label class="check"><input type="checkbox" name="bot-pass-whist" ${appearance.botPassWhist !== false ? "checked" : ""}>${t("web.settings.bot_pass_whist")}</label>${window.PreferansAndroid ? `<label class="check"><input type="checkbox" name="voice-restore" ${voice.restoreAfterUnlock ? "checked" : ""}>${t("web.voice.restore_after_unlock")}</label>` : ""}`;
     $("#settings-play").insertAdjacentHTML("beforeend",`<div class="debug-settings"><strong>${t("web.debug.setting")}:</strong><label class="check"><input type="checkbox" name="debug-auction" ${debugAuction() ? "checked" : ""}>${t("web.debug.auction")}</label><label class="check"><input type="checkbox" name="debug-play" ${debugPlay() ? "checked" : ""}>${t("web.debug.play")}</label></div>`);
     previewDeck();
     $("#panel-body").insertAdjacentHTML("beforeend", `<p class="about-line">${esc(t("web.about.line", {p0: appVersion}))}</p>`);
@@ -1176,6 +1177,7 @@ document.addEventListener("submit", (e) => {
           debugPlay: d.has("debug-play"),
           passPriceHint: d.has("pass-price-hint"),
           poolDots: d.has("pool-dots"),
+          botPassWhist: d.has("bot-pass-whist"),
           localOnly: d.has('local-only'),
           tableRules,
           deck: String(d.get("deck")),

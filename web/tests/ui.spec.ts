@@ -2480,6 +2480,7 @@ test('settings: the Play tab saves on change, the Save button stays on the Rules
   await expect(page.locator('#settings-play [name="local-only"]')).toBeVisible();
   await expect(page.locator('#settings-play [name="pass-price-hint"]')).toBeChecked();
   await expect(page.locator('#settings-play [name="pool-dots"]')).toBeChecked();
+  await expect(page.locator('#settings-play [name="bot-pass-whist"]')).toBeChecked();
   await expect(page.locator('#settings-play [name="debug-auction"]')).toBeVisible();
   await expect(page.locator('#settings-play [name="debug-play"]')).toBeVisible();
   await expect(save).toBeHidden();
@@ -2493,6 +2494,7 @@ test('settings: the Play tab saves on change, the Save button stays on the Rules
   await page.getByRole('tab',{name:'Игра',exact:true}).click();
   await page.locator('[name="pool-dots"]').uncheck();
   await page.locator('[name="pass-price-hint"]').uncheck();
+  await page.locator('[name="bot-pass-whist"]').uncheck();
   await page.locator('[name="debug-play"]').check();
   // No Save pressed: closing and reopening shows the stored values.
   await page.waitForTimeout(600);
@@ -2501,6 +2503,7 @@ test('settings: the Play tab saves on change, the Save button stays on the Rules
   await page.getByRole('button',{name:'Настройки',exact:true}).click();
   await expect(page.locator('[name="pool-dots"]')).not.toBeChecked();
   await expect(page.locator('[name="pass-price-hint"]')).not.toBeChecked();
+  await expect(page.locator('[name="bot-pass-whist"]')).not.toBeChecked();
   await expect(page.locator('[name="debug-play"]')).toBeChecked();
 });
 

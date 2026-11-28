@@ -10,6 +10,7 @@ export interface Appearance {
   debugPlay?: boolean;
   passPriceHint?: boolean;
   poolDots?: boolean;
+  botPassWhist?: boolean;
 	playerCount?: number;
 	poolTarget?: number;
   defaultRoom?: string;

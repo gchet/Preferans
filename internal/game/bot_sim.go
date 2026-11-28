@@ -21,6 +21,15 @@ type SimOptions struct {
 	PassValue float64 // value of passing (the expected result of an all-pass deal)
 	TopK      int     // discard candidates evaluated by simulation
 	WhistMin  float64 // whist when its value beats passing by this many points
+	// Belief makes sampled declarer hands count the more, the closer their own
+	// handTricks estimate is to the contract level the declarer actually bid
+	// (a gaussian with this sigma; zero samples hands uniformly). BeliefShift moves
+	// the centre: the expected estimate is level+BeliefShift.
+	Belief      float64
+	BeliefShift float64
+	// PartnerPass makes the first defender assume that the other defender passes
+	// (what a bot does against humans); by default it assumes the partner whists.
+	PartnerPass bool
 }
 
 // DefaultSimOptions returns the parameters that the lab found to be a plateau.
@@ -174,6 +183,27 @@ func bestDiscard(hand []Card, trump int) uint32 {
 
 var simBothWhist = [4]int{2, 2, 2, 2}
 
+func simCards(mask uint32) []Card {
+	var out []Card
+	for c := 0; c < 32; c++ {
+		if mask&(uint32(1)<<c) != 0 {
+			out = append(out, Card(c))
+		}
+	}
+	return out
+}
+
+// simBeliefWeight says how plausible a declarer's final hand is, given that the
+// declarer bid this contract: bidders bid roughly what their hand is worth, so a
+// hand far weaker (or far stronger) than the contract is unlikely.
+func simBeliefWeight(opt *SimOptions, hand []Card, c Contract) float64 {
+	if opt.Belief <= 0 || c.Suit < 0 || c.Suit > 4 {
+		return 1
+	}
+	d := handTricks(hand, c.Suit) - (float64(c.Level) + opt.BeliefShift)
+	return math.Exp(-d * d / (2 * opt.Belief * opt.Belief))
+}
+
 // SimBotCommand is the application's entry point: it decides bidding and the
 // discard with the final contract by simulation. The bool is false when the
 // stage is not covered (misere keeps the application's rules), when the context
@@ -192,6 +222,25 @@ func SimBotCommand(ctx context.Context, v View, seed int64, samples int) (Comman
 	case "discard":
 		command, ok = simDiscard(ctx, &opt, v, seed)
 	}
+	if !ok || ctx.Err() != nil {
+		return Command{}, 0, false
+	}
+	return command, opt.Samples, true
+}
+
+// SimWhistCommand decides whist or pass in the defence stage by simulation. The
+// sampled declarer hands are weighted by how well they fit the contract. The lab
+// found this about as good as always passing, so the application uses it only when
+// the host switches the bot's forced pass off. The bool is false when the stage is
+// not covered or the context ends; the caller then passes.
+func SimWhistCommand(ctx context.Context, v View, seed int64, samples int) (Command, int, bool) {
+	opt := DefaultSimOptions()
+	opt.Samples = 100
+	opt.Belief = 0.7
+	if samples > opt.Samples {
+		opt.Samples = samples
+	}
+	command, ok := simWhist(ctx, &opt, v, seed)
 	if !ok || ctx.Err() != nil {
 		return Command{}, 0, false
 	}
@@ -382,10 +431,15 @@ func simWhist(ctx context.Context, opt *SimOptions, v View, seed int64) (Command
 	}
 	mine := simMask(v.Hand)
 	partnerDefence := 2
-	if len(v.Defence) > partner && v.Defence[partner] == 1 {
+	if opt.PartnerPass {
 		partnerDefence = 1
 	}
-	var whist, pass float64
+	if len(v.Defence) > partner && v.Defence[partner] == 1 {
+		partnerDefence = 1
+	} else if len(v.Defence) > partner && v.Defence[partner] == 2 {
+		partnerDefence = 2
+	}
+	var whist, pass, weight float64
 	for s := 0; s < opt.Samples; s++ {
 		if ctx.Err() != nil {
 			return Command{}, false
@@ -395,15 +449,23 @@ func simWhist(ctx context.Context, opt *SimOptions, v View, seed int64) (Command
 		hands[me] = mine
 		hands[partner] = simMask(u[0:10])
 		hands[declarer] = simMask(u[10:20])
+		w := simBeliefWeight(opt, simCards(hands[declarer]), *v.Contract)
+		if w < 1e-6 {
+			continue
+		}
 		taken := e.playout(hands, *v.Contract, declarer)
 		var def [4]int
 		def[partner] = partnerDefence
 		def[me] = 2
-		whist += e.score(*v.Contract, declarer, taken, def)[me]
+		whist += w * e.score(*v.Contract, declarer, taken, def)[me]
 		def[me] = 1
-		pass += e.score(*v.Contract, declarer, taken, def)[me]
+		pass += w * e.score(*v.Contract, declarer, taken, def)[me]
+		weight += w
 	}
-	if (whist-pass)/float64(opt.Samples) > opt.WhistMin {
+	if weight == 0 {
+		return Command{}, false
+	}
+	if (whist-pass)/weight > opt.WhistMin {
 		return Command{Action: "whist"}, true
 	}
 	return Command{Action: "pass"}, true
